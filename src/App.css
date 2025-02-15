@@ -5,8 +5,8 @@ body {
   margin: 0;
   padding: 0;
   font-family: sans-serif;
-  background-color: #fff; /* White page background */
-  color: #333; /* Dark text for general UI */
+  background-color: #fff; /* White background */
+  color: #333;
   height: 100%;
 }
 
@@ -15,12 +15,14 @@ body {
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: center;
+  justify-content: start;
   padding: 20px;
+  box-sizing: border-box;
 }
 
 h1 {
   margin-bottom: 16px;
+  text-align: center;
 }
 
 .button-bar {
@@ -34,11 +36,11 @@ h1 {
   cursor: pointer;
 }
 
+/* Board styling */
 .board-container {
   display: inline-block;
   border: 2px solid #444;
   box-shadow: 0 0 10px rgba(0, 0, 0, 0.2);
-  margin-bottom: 20px;
 }
 
 .board-row {
@@ -46,8 +48,18 @@ h1 {
 }
 
 .cell {
+  /* 
+    Use flexible sizing so it shrinks on small screens.
+    min-width, max-width, and some approach to keep it from getting too big or too small. 
+  */
+  flex: 0 0 auto;
   width: 50px;
   height: 50px;
+  min-width: 40px;
+  min-height: 40px;
+  max-width: 60px;
+  max-height: 60px;
+
   display: flex;
   align-items: center;
   justify-content: center;
@@ -55,13 +67,29 @@ h1 {
   font-size: 1.4rem;
   font-weight: bold;
   cursor: pointer;
+  box-sizing: border-box;
 }
 
 .cell:hover {
   opacity: 0.8;
 }
 
-/* Modal overlay for solved message */
+/* 
+  A media query for narrower screens (e.g. max-width: 600px).
+  We'll reduce the cell size a bit more.
+*/
+@media (max-width: 600px) {
+  .cell {
+    width: 40px;
+    height: 40px;
+    min-width: 30px;
+    min-height: 30px;
+    max-width: 40px;
+    max-height: 40px;
+  }
+}
+
+/* Modal for solve screen */
 .modal-backdrop {
   position: fixed;
   top: 0;

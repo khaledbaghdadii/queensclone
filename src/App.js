@@ -2,28 +2,45 @@ import React, { useState, useEffect, useRef } from "react";
 import "./App.css";
 
 /**
- * A carefully curated set of 8 distinct colors from a darker/brighter palette
- * so that each is clearly different. The background is white,
- * so these colors pop. We avoid multiple purples or very close hues.
+ * A color map of 8 distinct dark/strong colors for use on a white page.
  */
 const regionColorMap = {
-  1: "#2c3e50", // dark bluish gray
-  2: "#e74c3c", // red
-  3: "#8e44ad", // purple
-  4: "#f39c12", // orange
-  5: "#16a085", // teal
-  6: "#27ae60", // green
-  7: "#2980b9", // blue
-  8: "#d35400", // dark orange
+  1: "#2c3e50",
+  2: "#e74c3c",
+  3: "#8e44ad",
+  4: "#f39c12",
+  5: "#16a085",
+  6: "#27ae60",
+  7: "#2980b9",
+  8: "#d35400",
   9: "#34495e", // fallback if needed
 };
 
-/* ==========================================
-   1) PLACE 8 NON-ADJACENT QUEENS
-========================================== */
+/* ==============================
+   Crown SVG Component
+   ============================== */
+function CrownSVG({ color = "#FFF", size = "1em" }) {
+  // This is a lightweight SVG crown. You can tweak paths or use a more detailed version.
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 512 512"
+      fill={color}
+      xmlns="http://www.w3.org/2000/svg"
+    >
+      <path d="M98.67 162.64L65 348.49h382l-33.67-185.85L320.7 252l-55.61-120.57L209.49 252l-110.82-89.36zm0 0" />
+      <path d="M65 382.49v44c0 8.28 6.72 15 15 15h352c8.28 0 15-6.72 15-15v-44H65z" />
+    </svg>
+  );
+}
+
+/* ==============================
+   1) Place 8 Non-Adjacent Queens
+   ============================== */
 function place8NonAdjacentQueens() {
   const board = Array.from({ length: 8 }, () => Array(8).fill(""));
-  // randomize columns for each row
+  // Shuffle columns for each row, so we place queens randomly
   const columnsForRow = Array.from({ length: 8 }, () =>
     shuffle([0, 1, 2, 3, 4, 5, 6, 7])
   );
@@ -45,15 +62,15 @@ function place8NonAdjacentQueens() {
 }
 
 function isSafeRowColAdj(board, row, col) {
-  // row check
+  // row
   for (let c = 0; c < 8; c++) {
     if (board[row][c] === "Q") return false;
   }
-  // column check
+  // col
   for (let r = 0; r < 8; r++) {
     if (board[r][col] === "Q") return false;
   }
-  // adjacency (including diagonals)
+  // adjacency (8 directions)
   const directions = [
     [-1, -1],
     [-1, 0],
@@ -65,7 +82,7 @@ function isSafeRowColAdj(board, row, col) {
     [1, 1],
   ];
   for (let [dr, dc] of directions) {
-    const rr = row + dr,
+    let rr = row + dr,
       cc = col + dc;
     if (rr >= 0 && rr < 8 && cc >= 0 && cc < 8) {
       if (board[rr][cc] === "Q") return false;
@@ -74,7 +91,7 @@ function isSafeRowColAdj(board, row, col) {
   return true;
 }
 
-/** Shuffle array in-place. */
+/** Fisher-Yates shuffle in-place. */
 function shuffle(arr) {
   for (let i = arr.length - 1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1));
@@ -83,15 +100,15 @@ function shuffle(arr) {
   return arr;
 }
 
-/* ==========================================
-   2) CARVE REGIONS AROUND EACH QUEEN
-========================================== */
+/* ==============================
+   2) Carve 8 Contiguous Regions (Naive BFS)
+   ============================== */
 function buildRegionsFromQueens(solutionBoard) {
   const regionColors = Array.from({ length: 8 }, () => Array(8).fill(0));
-  let regionID = 1;
   const seeds = [];
+  let regionID = 1;
 
-  // each queen => BFS seed
+  // Mark each queen cell as the seed for that region
   for (let r = 0; r < 8; r++) {
     for (let c = 0; c < 8; c++) {
       if (solutionBoard[r][c] === "Q") {
@@ -102,6 +119,7 @@ function buildRegionsFromQueens(solutionBoard) {
     }
   }
 
+  // Multi-source BFS expansions
   const queue = [...seeds];
   while (queue.length > 0) {
     const idx = Math.floor(Math.random() * queue.length);
@@ -115,9 +133,11 @@ function buildRegionsFromQueens(solutionBoard) {
       }
     }
   }
+
   return regionColors;
 }
 
+/** Orth neighbors. */
 function getOrthNeighbors(r, c) {
   const dirs = [
     [-1, 0],
@@ -136,23 +156,23 @@ function getOrthNeighbors(r, c) {
   return res;
 }
 
-/* ==========================================
-   3) CHECK UNIQUENESS
-========================================== */
+/* ==============================
+   3) Check if Puzzle is Unique
+   ============================== */
 function hasUniqueSolution(regionColors) {
+  // Start empty
   const emptyBoard = Array.from({ length: 8 }, () => Array(8).fill(""));
   const found = { count: 0 };
   countAllSolutions(emptyBoard, regionColors, 0, found);
   return found.count === 1;
 }
 
-/** row-based solver with region/adjacency checks. */
 function countAllSolutions(board, regionColors, row = 0, found = { count: 0 }) {
   if (row === 8) {
     found.count++;
     return;
   }
-  if (found.count >= 2) return;
+  if (found.count >= 2) return; // stop if >1 solutions
 
   for (let col = 0; col < 8; col++) {
     if (board[row][col] === "") {
@@ -187,13 +207,13 @@ function isSafePuzzle(board, row, col, regionColors) {
     [1, 1],
   ];
   for (let [dr, dc] of directions) {
-    const rr = row + dr,
+    let rr = row + dr,
       cc = col + dc;
     if (rr >= 0 && rr < 8 && cc >= 0 && cc < 8) {
       if (board[rr][cc] === "Q") return false;
     }
   }
-  // region uniqueness
+  // region
   const regID = regionColors[row][col];
   for (let rr = 0; rr < 8; rr++) {
     for (let cc = 0; cc < 8; cc++) {
@@ -205,28 +225,32 @@ function isSafePuzzle(board, row, col, regionColors) {
   return true;
 }
 
-/* ==========================================
-   4) GENERATE PUZZLE ( up to X attempts )
-========================================== */
-function generateCarvedPuzzle(maxAttempts = 200) {
+/* ==============================
+   4) Generate Puzzle (up to 500 tries)
+   ============================== */
+function generateCarvedPuzzle() {
+  const maxAttempts = 500;
   for (let i = 0; i < maxAttempts; i++) {
     const solution = place8NonAdjacentQueens();
     if (!solution) continue;
+
     const regionColors = buildRegionsFromQueens(solution);
+    if (!regionColors) continue; // just in case
+
     if (hasUniqueSolution(regionColors)) {
       return regionColors;
     }
   }
-  return null;
+  return null; // fail
 }
 
-/* ==========================================
-   5) FIND CONFLICTS & CHECK SOLVED
-========================================== */
+/* ==============================
+   5) Conflict Checking & Win
+   ============================== */
 function findConflictCells(board, regionColors) {
   const conflictSet = new Set();
   const queens = [];
-
+  // gather all queens
   for (let r = 0; r < 8; r++) {
     for (let c = 0; c < 8; c++) {
       if (board[r][c] === "Q") {
@@ -235,6 +259,7 @@ function findConflictCells(board, regionColors) {
     }
   }
 
+  // compare each pair for row/col/region/adj adjacency
   for (let i = 0; i < queens.length; i++) {
     for (let j = i + 1; j < queens.length; j++) {
       const [r1, c1] = queens[i];
@@ -269,9 +294,7 @@ function isPuzzleSolved(board, regionColors) {
   let queenCount = 0;
   for (let r = 0; r < 8; r++) {
     for (let c = 0; c < 8; c++) {
-      if (board[r][c] === "Q") {
-        queenCount++;
-      }
+      if (board[r][c] === "Q") queenCount++;
     }
   }
   if (queenCount !== 8) return false;
@@ -280,24 +303,21 @@ function isPuzzleSolved(board, regionColors) {
   return conflicts.size === 0;
 }
 
-/* ==========================================
-   6) HELPER: FORMAT TIME mm:ss
-========================================== */
+/* ==============================
+   6) Format Time => "mm mins ss sec"
+   ============================== */
 function formatTime(totalSeconds) {
   const mins = Math.floor(totalSeconds / 60);
   const secs = totalSeconds % 60;
-  if (mins === 0) {
-    return `${secs} sec`;
-  }
-  // e.g. "1 min 4 sec" or "2 mins 10 sec"
+  if (mins === 0) return `${secs} sec`;
   const minLabel = mins === 1 ? "1 min" : `${mins} mins`;
   const secLabel = secs === 1 ? "1 sec" : `${secs} sec`;
   return `${minLabel} ${secLabel}`;
 }
 
-/* ==========================================
-   7) MAIN REACT APP
-========================================== */
+/* ==============================
+   7) MAIN APP
+   ============================== */
 function App() {
   const [regionColors, setRegionColors] = useState(null);
   const [userBoard, setUserBoard] = useState(
@@ -308,30 +328,52 @@ function App() {
   const [loading, setLoading] = useState(false);
   const [generationFailed, setGenerationFailed] = useState(false);
 
+  // Keep track if the puzzle is finished so we don't re-open modal
+  const [gameFinished, setGameFinished] = useState(false);
+
   // Timer
   const [timeElapsed, setTimeElapsed] = useState(0);
   const intervalRef = useRef(null);
 
-  // Modal if solved
+  // Modal for solved puzzle
   const [solvedModalOpen, setSolvedModalOpen] = useState(false);
 
-  // On mount, generate puzzle
+  // On mount => generate puzzle
   useEffect(() => {
     handleNewPuzzle();
     // eslint-disable-next-line
   }, []);
 
-  // Start/stop timer
+  // Recalc conflicts
   useEffect(() => {
-    // If puzzle is loaded & not solved => run timer
-    if (regionColors && !loading && !solvedModalOpen) {
+    if (!loading && regionColors) {
+      const conflicts = findConflictCells(userBoard, regionColors);
+      setConflictCells(conflicts);
+    }
+  }, [userBoard, regionColors, loading]);
+
+  // Check solved
+  useEffect(() => {
+    if (!loading && regionColors && !gameFinished) {
+      // Only check if we haven't finished before
+      if (isPuzzleSolved(userBoard, regionColors)) {
+        setSolvedModalOpen(true);
+        setGameFinished(true); // Mark puzzle as finished => won't re-show
+      }
+    }
+  }, [userBoard, regionColors, loading, gameFinished]);
+
+  // Timer start/stop
+  useEffect(() => {
+    if (regionColors && !loading && !solvedModalOpen && !gameFinished) {
+      // Start or continue timer
       if (!intervalRef.current) {
         intervalRef.current = setInterval(() => {
           setTimeElapsed((t) => t + 1);
         }, 1000);
       }
     } else {
-      // pause the timer
+      // Stop
       if (intervalRef.current) {
         clearInterval(intervalRef.current);
         intervalRef.current = null;
@@ -342,21 +384,8 @@ function App() {
         clearInterval(intervalRef.current);
       }
     };
-  }, [regionColors, loading, solvedModalOpen]);
+  }, [regionColors, loading, solvedModalOpen, gameFinished]);
 
-  // recalc conflicts
-  useEffect(() => {
-    if (!loading && regionColors) {
-      const conflicts = findConflictCells(userBoard, regionColors);
-      setConflictCells(conflicts);
-
-      if (isPuzzleSolved(userBoard, regionColors)) {
-        setSolvedModalOpen(true);
-      }
-    }
-  }, [userBoard, regionColors, loading]);
-
-  // generate puzzle
   function handleNewPuzzle() {
     setLoading(true);
     setGenerationFailed(false);
@@ -364,39 +393,44 @@ function App() {
     setUserBoard(Array.from({ length: 8 }, () => Array(8).fill("")));
     setConflictCells(new Set());
     setSolvedModalOpen(false);
+    setGameFinished(false);
     setTimeElapsed(0);
 
     setTimeout(() => {
-      const puzzle = generateCarvedPuzzle(200);
+      const puzzle = generateCarvedPuzzle(); // up to 500 tries
       if (!puzzle) {
         setGenerationFailed(true);
       } else {
         setRegionColors(puzzle);
       }
       setLoading(false);
-    }, 100);
+    }, 50);
   }
 
-  // reset puzzle => same regionColors
   function handleResetPuzzle() {
     if (!loading && regionColors) {
       setUserBoard(Array.from({ length: 8 }, () => Array(8).fill("")));
       setConflictCells(new Set());
       setSolvedModalOpen(false);
+      setGameFinished(false);
       setTimeElapsed(0);
     }
   }
 
-  // cell click => cycle
+  /** Cell click => cycle "" -> "X" -> "Q" -> "" */
   function handleCellClick(r, c) {
     if (loading || !regionColors) return;
     setUserBoard((prev) => {
       const copy = prev.map((row) => [...row]);
       const cur = copy[r][c];
       let next = "";
-      if (cur === "") next = "X";
-      else if (cur === "X") next = "Q";
-      else if (cur === "Q") next = "";
+      if (cur === "") {
+        next = "X";
+      } else if (cur === "X") {
+        next = "Q";
+      } else if (cur === "Q") {
+        next = "";
+      }
       copy[r][c] = next;
       return copy;
     });
@@ -409,11 +443,11 @@ function App() {
   if (loading || !regionColors) {
     return (
       <div className="game-container">
-        <h1>Queens Game (Generating...)</h1>
-        {loading && <p>Trying up to 200 attempts. Please wait...</p>}
+        <h1>Queens Game</h1>
+        {loading && <p>Generating puzzle (up to 500 tries). Please wait...</p>}
         {generationFailed && (
           <>
-            <p>Could not generate a puzzle after many tries.</p>
+            <p>Could not generate puzzle after many tries.</p>
             <button onClick={handleNewPuzzle}>Try Again</button>
           </>
         )}
@@ -421,10 +455,10 @@ function App() {
     );
   }
 
-  // puzzle ready
+  // puzzle is ready
   return (
     <div className="game-container">
-      <h1>Queens Game - Carve Approach</h1>
+      <h1>Queens Game</h1>
       <p>Time: {formatTime(timeElapsed)}</p>
 
       <div className="button-bar">
@@ -442,14 +476,13 @@ function App() {
               const cellKey = `${rIdx},${cIdx}`;
               const inConflict = conflictCells.has(cellKey);
 
-              // Set different styles for "X" vs "Q"
-              let displayVal = val;
-              let textStyle = { color: "#FFF" };
+              let content = null;
               if (val === "Q") {
-                displayVal = "♛";
-                textStyle = { color: "#FFF" };
+                // Render the fancy Crown
+                content = <CrownSVG color="#FFF" size="1.5em" />;
               } else if (val === "X") {
-                textStyle = { color: "#FFD700" }; // gold for "X"
+                // Show "X" in gold
+                content = <span style={{ color: "#FFD700" }}>X</span>;
               }
 
               const cellStyle = {
@@ -464,7 +497,7 @@ function App() {
                   style={cellStyle}
                   onClick={() => handleCellClick(rIdx, cIdx)}
                 >
-                  <span style={textStyle}>{displayVal}</span>
+                  {content}
                 </div>
               );
             })}
