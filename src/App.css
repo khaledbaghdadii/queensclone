@@ -1,11 +1,13 @@
 /* App.css */
 
+html,
 body {
   margin: 0;
   padding: 0;
   font-family: sans-serif;
-  background-color: #111;
-  color: #eee;
+  background-color: #fff; /* White page background */
+  color: #333; /* Dark text for general UI */
+  height: 100%;
 }
 
 .game-container {
@@ -19,11 +21,10 @@ body {
 
 h1 {
   margin-bottom: 16px;
-  text-align: center;
 }
 
 .button-bar {
-  margin-bottom: 20px;
+  margin: 10px 0 20px;
 }
 
 .button-bar button {
@@ -36,7 +37,8 @@ h1 {
 .board-container {
   display: inline-block;
   border: 2px solid #444;
-  box-shadow: 0 0 10px rgba(0, 0, 0, 0.8);
+  box-shadow: 0 0 10px rgba(0, 0, 0, 0.2);
+  margin-bottom: 20px;
 }
 
 .board-row {
@@ -52,10 +54,46 @@ h1 {
   user-select: none;
   font-size: 1.4rem;
   font-weight: bold;
-  color: #fff; /* White text for the 'X' or '♛' */
   cursor: pointer;
 }
 
 .cell:hover {
   opacity: 0.8;
+}
+
+/* Modal overlay for solved message */
+.modal-backdrop {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.modal {
+  background: #fff;
+  color: #000;
+  padding: 20px 30px;
+  border-radius: 8px;
+  max-width: 300px;
+  text-align: center;
+}
+
+.modal h2 {
+  margin-top: 0;
+  margin-bottom: 10px;
+}
+
+.modal p {
+  margin-bottom: 10px;
+}
+
+.modal button {
+  cursor: pointer;
+  padding: 8px 16px;
+  font-size: 1rem;
 }
