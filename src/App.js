@@ -1,520 +1,626 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect } from "react";
 import "./App.css";
 
-/**
- * A color map of 8 distinct dark/strong colors for use on a white page.
- */
-const regionColorMap = {
-  1: "#2c3e50",
-  2: "#e74c3c",
-  3: "#8e44ad",
-  4: "#f39c12",
-  5: "#16a085",
-  6: "#27ae60",
-  7: "#2980b9",
-  8: "#d35400",
-  9: "#34495e", // fallback if needed
-};
-
-/* ==============================
-   Crown SVG Component
-   ============================== */
-function CrownSVG({ color = "#FFF", size = "1em" }) {
-  // This is a lightweight SVG crown. You can tweak paths or use a more detailed version.
-  return (
-    <svg
-      width={size}
-      height={size}
-      viewBox="0 0 512 512"
-      fill={color}
-      xmlns="http://www.w3.org/2000/svg"
-    >
-      <path d="M98.67 162.64L65 348.49h382l-33.67-185.85L320.7 252l-55.61-120.57L209.49 252l-110.82-89.36zm0 0" />
-      <path d="M65 382.49v44c0 8.28 6.72 15 15 15h352c8.28 0 15-6.72 15-15v-44H65z" />
-    </svg>
-  );
-}
-
-/* ==============================
-   1) Place 8 Non-Adjacent Queens
-   ============================== */
-function place8NonAdjacentQueens() {
-  const board = Array.from({ length: 8 }, () => Array(8).fill(""));
-  // Shuffle columns for each row, so we place queens randomly
-  const columnsForRow = Array.from({ length: 8 }, () =>
-    shuffle([0, 1, 2, 3, 4, 5, 6, 7])
-  );
-
-  function backtrack(row = 0) {
-    if (row === 8) return true;
-    for (let col of columnsForRow[row]) {
-      if (isSafeRowColAdj(board, row, col)) {
-        board[row][col] = "Q";
-        if (backtrack(row + 1)) return true;
-        board[row][col] = "";
-      }
-    }
-    return false;
-  }
-
-  if (backtrack(0)) return board;
-  return null;
-}
-
-function isSafeRowColAdj(board, row, col) {
-  // row
-  for (let c = 0; c < 8; c++) {
-    if (board[row][c] === "Q") return false;
-  }
-  // col
-  for (let r = 0; r < 8; r++) {
-    if (board[r][col] === "Q") return false;
-  }
-  // adjacency (8 directions)
-  const directions = [
-    [-1, -1],
-    [-1, 0],
-    [-1, 1],
-    [0, -1],
-    [0, 1],
-    [1, -1],
-    [1, 0],
-    [1, 1],
-  ];
-  for (let [dr, dc] of directions) {
-    let rr = row + dr,
-      cc = col + dc;
-    if (rr >= 0 && rr < 8 && cc >= 0 && cc < 8) {
-      if (board[rr][cc] === "Q") return false;
-    }
-  }
-  return true;
-}
-
-/** Fisher-Yates shuffle in-place. */
-function shuffle(arr) {
-  for (let i = arr.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [arr[i], arr[j]] = [arr[j], arr[i]];
-  }
-  return arr;
-}
-
-/* ==============================
-   2) Carve 8 Contiguous Regions (Naive BFS)
-   ============================== */
-function buildRegionsFromQueens(solutionBoard) {
-  const regionColors = Array.from({ length: 8 }, () => Array(8).fill(0));
-  const seeds = [];
-  let regionID = 1;
-
-  // Mark each queen cell as the seed for that region
-  for (let r = 0; r < 8; r++) {
-    for (let c = 0; c < 8; c++) {
-      if (solutionBoard[r][c] === "Q") {
-        regionColors[r][c] = regionID;
-        seeds.push([r, c, regionID]);
-        regionID++;
-      }
-    }
-  }
-
-  // Multi-source BFS expansions
-  const queue = [...seeds];
-  while (queue.length > 0) {
-    const idx = Math.floor(Math.random() * queue.length);
-    const [r, c, id] = queue.splice(idx, 1)[0];
-    const neighbors = getOrthNeighbors(r, c);
-    shuffle(neighbors);
-    for (let [nr, nc] of neighbors) {
-      if (regionColors[nr][nc] === 0) {
-        regionColors[nr][nc] = id;
-        queue.push([nr, nc, id]);
-      }
-    }
-  }
-
-  return regionColors;
-}
-
-/** Orth neighbors. */
-function getOrthNeighbors(r, c) {
-  const dirs = [
-    [-1, 0],
-    [1, 0],
-    [0, -1],
-    [0, 1],
-  ];
-  const res = [];
-  for (let [dr, dc] of dirs) {
-    const rr = r + dr,
-      cc = c + dc;
-    if (rr >= 0 && rr < 8 && cc >= 0 && cc < 8) {
-      res.push([rr, cc]);
-    }
-  }
-  return res;
-}
-
-/* ==============================
-   3) Check if Puzzle is Unique
-   ============================== */
-function hasUniqueSolution(regionColors) {
-  // Start empty
-  const emptyBoard = Array.from({ length: 8 }, () => Array(8).fill(""));
-  const found = { count: 0 };
-  countAllSolutions(emptyBoard, regionColors, 0, found);
-  return found.count === 1;
-}
-
-function countAllSolutions(board, regionColors, row = 0, found = { count: 0 }) {
-  if (row === 8) {
-    found.count++;
-    return;
-  }
-  if (found.count >= 2) return; // stop if >1 solutions
-
-  for (let col = 0; col < 8; col++) {
-    if (board[row][col] === "") {
-      if (isSafePuzzle(board, row, col, regionColors)) {
-        board[row][col] = "Q";
-        countAllSolutions(board, regionColors, row + 1, found);
-        board[row][col] = "";
-        if (found.count >= 2) return;
-      }
-    }
-  }
-}
-
-function isSafePuzzle(board, row, col, regionColors) {
-  // row
-  for (let c = 0; c < 8; c++) {
-    if (board[row][c] === "Q") return false;
-  }
-  // col
-  for (let r = 0; r < 8; r++) {
-    if (board[r][col] === "Q") return false;
-  }
-  // adjacency
-  const directions = [
-    [-1, -1],
-    [-1, 0],
-    [-1, 1],
-    [0, -1],
-    [0, 1],
-    [1, -1],
-    [1, 0],
-    [1, 1],
-  ];
-  for (let [dr, dc] of directions) {
-    let rr = row + dr,
-      cc = col + dc;
-    if (rr >= 0 && rr < 8 && cc >= 0 && cc < 8) {
-      if (board[rr][cc] === "Q") return false;
-    }
-  }
-  // region
-  const regID = regionColors[row][col];
-  for (let rr = 0; rr < 8; rr++) {
-    for (let cc = 0; cc < 8; cc++) {
-      if (board[rr][cc] === "Q" && regionColors[rr][cc] === regID) {
-        return false;
-      }
-    }
-  }
-  return true;
-}
-
-/* ==============================
-   4) Generate Puzzle (up to 500 tries)
-   ============================== */
-function generateCarvedPuzzle() {
-  const maxAttempts = 500;
-  for (let i = 0; i < maxAttempts; i++) {
-    const solution = place8NonAdjacentQueens();
-    if (!solution) continue;
-
-    const regionColors = buildRegionsFromQueens(solution);
-    if (!regionColors) continue; // just in case
-
-    if (hasUniqueSolution(regionColors)) {
-      return regionColors;
-    }
-  }
-  return null; // fail
-}
-
-/* ==============================
-   5) Conflict Checking & Win
-   ============================== */
-function findConflictCells(board, regionColors) {
-  const conflictSet = new Set();
-  const queens = [];
-  // gather all queens
-  for (let r = 0; r < 8; r++) {
-    for (let c = 0; c < 8; c++) {
-      if (board[r][c] === "Q") {
-        queens.push([r, c]);
-      }
-    }
-  }
-
-  // compare each pair for row/col/region/adj adjacency
-  for (let i = 0; i < queens.length; i++) {
-    for (let j = i + 1; j < queens.length; j++) {
-      const [r1, c1] = queens[i];
-      const [r2, c2] = queens[j];
-
-      // row
-      if (r1 === r2) {
-        conflictSet.add(`${r1},${c1}`);
-        conflictSet.add(`${r2},${c2}`);
-      }
-      // col
-      if (c1 === c2) {
-        conflictSet.add(`${r1},${c1}`);
-        conflictSet.add(`${r2},${c2}`);
-      }
-      // region
-      if (regionColors[r1][c1] === regionColors[r2][c2]) {
-        conflictSet.add(`${r1},${c1}`);
-        conflictSet.add(`${r2},${c2}`);
-      }
-      // adjacency
-      if (Math.abs(r1 - r2) <= 1 && Math.abs(c1 - c2) <= 1) {
-        conflictSet.add(`${r1},${c1}`);
-        conflictSet.add(`${r2},${c2}`);
-      }
-    }
-  }
-  return conflictSet;
-}
-
-function isPuzzleSolved(board, regionColors) {
-  let queenCount = 0;
-  for (let r = 0; r < 8; r++) {
-    for (let c = 0; c < 8; c++) {
-      if (board[r][c] === "Q") queenCount++;
-    }
-  }
-  if (queenCount !== 8) return false;
-
-  const conflicts = findConflictCells(board, regionColors);
-  return conflicts.size === 0;
-}
-
-/* ==============================
-   6) Format Time => "mm mins ss sec"
-   ============================== */
-function formatTime(totalSeconds) {
-  const mins = Math.floor(totalSeconds / 60);
-  const secs = totalSeconds % 60;
-  if (mins === 0) return `${secs} sec`;
-  const minLabel = mins === 1 ? "1 min" : `${mins} mins`;
-  const secLabel = secs === 1 ? "1 sec" : `${secs} sec`;
-  return `${minLabel} ${secLabel}`;
-}
-
-/* ==============================
-   7) MAIN APP
-   ============================== */
 function App() {
-  const [regionColors, setRegionColors] = useState(null);
-  const [userBoard, setUserBoard] = useState(
-    Array.from({ length: 8 }, () => Array(8).fill(""))
-  );
-  const [conflictCells, setConflictCells] = useState(new Set());
+  const [size, setSize] = useState(8);
+  const [board, setBoard] = useState([]);
+  const [regions, setRegions] = useState([]);
+  const [solution, setSolution] = useState(null);
+  const [colors, setColors] = useState([]);
+  const [timer, setTimer] = useState(0);
+  const [timerInterval, setTimerInterval] = useState(null);
+  const [message, setMessage] = useState("");
+  const [errorCells, setErrorCells] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [conflictPairs, setConflictPairs] = useState([]);
 
-  const [loading, setLoading] = useState(false);
-  const [generationFailed, setGenerationFailed] = useState(false);
-
-  // Keep track if the puzzle is finished so we don't re-open modal
-  const [gameFinished, setGameFinished] = useState(false);
-
-  // Timer
-  const [timeElapsed, setTimeElapsed] = useState(0);
-  const intervalRef = useRef(null);
-
-  // Modal for solved puzzle
-  const [solvedModalOpen, setSolvedModalOpen] = useState(false);
-
-  // On mount => generate puzzle
+  // Initialize the game
   useEffect(() => {
-    handleNewPuzzle();
-    // eslint-disable-next-line
-  }, []);
+    initializeGame(size);
 
-  // Recalc conflicts
-  useEffect(() => {
-    if (!loading && regionColors) {
-      const conflicts = findConflictCells(userBoard, regionColors);
-      setConflictCells(conflicts);
-    }
-  }, [userBoard, regionColors, loading]);
-
-  // Check solved
-  useEffect(() => {
-    if (!loading && regionColors && !gameFinished) {
-      // Only check if we haven't finished before
-      if (isPuzzleSolved(userBoard, regionColors)) {
-        setSolvedModalOpen(true);
-        setGameFinished(true); // Mark puzzle as finished => won't re-show
-      }
-    }
-  }, [userBoard, regionColors, loading, gameFinished]);
-
-  // Timer start/stop
-  useEffect(() => {
-    if (regionColors && !loading && !solvedModalOpen && !gameFinished) {
-      // Start or continue timer
-      if (!intervalRef.current) {
-        intervalRef.current = setInterval(() => {
-          setTimeElapsed((t) => t + 1);
-        }, 1000);
-      }
-    } else {
-      // Stop
-      if (intervalRef.current) {
-        clearInterval(intervalRef.current);
-        intervalRef.current = null;
-      }
-    }
     return () => {
-      if (intervalRef.current) {
-        clearInterval(intervalRef.current);
+      if (timerInterval) clearInterval(timerInterval);
+    };
+  }, [size]);
+
+  const initializeGame = async (boardSize) => {
+    setLoading(true);
+    setErrorCells([]);
+    setConflictPairs([]);
+    setMessage("");
+
+    // Generate colors
+    const newColors = generateColors(boardSize);
+    setColors(newColors);
+
+    // Initialize empty arrays
+    const emptyBoard = Array(boardSize)
+      .fill()
+      .map(() => Array(boardSize).fill(0));
+    setBoard(emptyBoard);
+
+    // Generate regions and puzzle in a non-blocking way
+    setTimeout(() => {
+      try {
+        const { newRegions, newSolution } = generatePuzzle(boardSize);
+
+        // Set state
+        setRegions(newRegions);
+        setSolution(newSolution);
+        setBoard(
+          Array(boardSize)
+            .fill()
+            .map(() => Array(boardSize).fill(0))
+        );
+
+        startTimer();
+        setLoading(false);
+      } catch (error) {
+        console.error("Error generating puzzle:", error);
+        // Retry with a clean slate
+        initializeGame(boardSize);
+      }
+    }, 100);
+  };
+
+  // Generate pastel colors for regions
+  const generateColors = (size) => {
+    const colors = [];
+    const hueStep = 360 / size;
+
+    for (let i = 0; i < size; i++) {
+      const hue = (i * hueStep) % 360;
+      const s = 60 + Math.floor(Math.random() * 20);
+      const l = 75 + Math.floor(Math.random() * 15);
+      colors.push(`hsl(${hue}, ${s}%, ${l}%)`);
+    }
+
+    return colors;
+  };
+
+  // Fisher-Yates shuffle algorithm
+  const shuffleArray = (array) => {
+    const newArray = [...array];
+    for (let i = newArray.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [newArray[i], newArray[j]] = [newArray[j], newArray[i]];
+    }
+    return newArray;
+  };
+
+  // Generate regions for the board
+  const generateRegions = (boardSize) => {
+    // Initialize all cells to -1 (unassigned)
+    let regionBoard = Array(boardSize)
+      .fill()
+      .map(() => Array(boardSize).fill(-1));
+
+    // Create region seeds (one per region)
+    for (let i = 0; i < boardSize; i++) {
+      let row, col;
+      do {
+        row = Math.floor(Math.random() * boardSize);
+        col = Math.floor(Math.random() * boardSize);
+      } while (regionBoard[row][col] !== -1);
+
+      regionBoard[row][col] = i;
+    }
+
+    // Grow regions until all cells are assigned
+    while (regionBoard.some((row) => row.some((cell) => cell === -1))) {
+      // For each region, try to grow it
+      for (let regionId = 0; regionId < boardSize; regionId++) {
+        // Find all cells of this region
+        const regionCells = [];
+        for (let r = 0; r < boardSize; r++) {
+          for (let c = 0; c < boardSize; c++) {
+            if (regionBoard[r][c] === regionId) {
+              regionCells.push({ row: r, col: c });
+            }
+          }
+        }
+
+        // For each cell in this region, try to grow to adjacent unassigned cells
+        for (const { row, col } of regionCells) {
+          // Try in all four directions
+          const directions = [
+            { dr: -1, dc: 0 },
+            { dr: 1, dc: 0 },
+            { dr: 0, dc: -1 },
+            { dr: 0, dc: 1 },
+          ];
+
+          for (const { dr, dc } of directions) {
+            const newRow = row + dr;
+            const newCol = col + dc;
+
+            // Check if valid and unassigned
+            if (
+              newRow >= 0 &&
+              newRow < boardSize &&
+              newCol >= 0 &&
+              newCol < boardSize &&
+              regionBoard[newRow][newCol] === -1
+            ) {
+              regionBoard[newRow][newCol] = regionId;
+              // Only grow one cell at a time (prevents one region from growing too fast)
+              break;
+            }
+          }
+        }
+      }
+    }
+
+    return regionBoard;
+  };
+
+  // Check if queens are adjacent (horizontally, vertically, or diagonally)
+  const areQueensAdjacent = (row1, col1, row2, col2) => {
+    const rowDiff = Math.abs(row1 - row2);
+    const colDiff = Math.abs(col1 - col2);
+
+    // Adjacent if they're 1 cell away in any direction (including diagonally)
+    return rowDiff <= 1 && colDiff <= 1;
+  };
+
+  // Check if queen placement is valid
+  const isValidPlacement = (testBoard, row, col, testRegions) => {
+    const boardSize = testBoard.length;
+
+    // Check row
+    for (let j = 0; j < boardSize; j++) {
+      if (testBoard[row][j] === 2) return false;
+    }
+
+    // Check column
+    for (let i = 0; i < boardSize; i++) {
+      if (testBoard[i][col] === 2) return false;
+    }
+
+    // Check adjacency (including diagonal adjacency)
+    for (
+      let i = Math.max(0, row - 1);
+      i <= Math.min(boardSize - 1, row + 1);
+      i++
+    ) {
+      for (
+        let j = Math.max(0, col - 1);
+        j <= Math.min(boardSize - 1, col + 1);
+        j++
+      ) {
+        // Skip the cell itself
+        if (i === row && j === col) continue;
+
+        if (testBoard[i][j] === 2) {
+          return false;
+        }
+      }
+    }
+
+    // Check region constraint
+    const currentRegion = testRegions[row][col];
+    for (let i = 0; i < boardSize; i++) {
+      for (let j = 0; j < boardSize; j++) {
+        if (testBoard[i][j] === 2 && testRegions[i][j] === currentRegion) {
+          return false;
+        }
+      }
+    }
+
+    return true;
+  };
+
+  // Generate a complete solution
+  const generateSolution = (testRegions) => {
+    const boardSize = testRegions.length;
+    const solutionBoard = Array(boardSize)
+      .fill()
+      .map(() => Array(boardSize).fill(0));
+
+    // Solve using backtracking
+    const solve = (row) => {
+      if (row >= boardSize) return true;
+
+      // Try each column in the current row
+      const cols = shuffleArray([...Array(boardSize).keys()]);
+
+      for (const col of cols) {
+        if (isValidPlacement(solutionBoard, row, col, testRegions)) {
+          solutionBoard[row][col] = 2; // Place queen
+
+          if (solve(row + 1)) return true;
+
+          solutionBoard[row][col] = 0; // Backtrack
+        }
+      }
+
+      return false;
+    };
+
+    // Start solving from the first row
+    if (solve(0)) {
+      return solutionBoard;
+    }
+
+    return null; // No solution exists
+  };
+
+  // Check if the puzzle has a unique solution
+  const hasUniqueSolution = (testRegions) => {
+    const boardSize = testRegions.length;
+    let solutionCount = 0;
+    let firstSolution = null;
+
+    const tempBoard = Array(boardSize)
+      .fill()
+      .map(() => Array(boardSize).fill(0));
+
+    const countSolutions = (row) => {
+      if (solutionCount > 1) return; // Early exit if multiple solutions found
+
+      if (row >= boardSize) {
+        solutionCount++;
+        if (solutionCount === 1) {
+          // Save the first solution
+          firstSolution = JSON.parse(JSON.stringify(tempBoard));
+        }
+        return;
+      }
+
+      for (let col = 0; col < boardSize; col++) {
+        if (isValidPlacement(tempBoard, row, col, testRegions)) {
+          tempBoard[row][col] = 2; // Place queen
+          countSolutions(row + 1);
+          tempBoard[row][col] = 0; // Remove queen
+        }
       }
     };
-  }, [regionColors, loading, solvedModalOpen, gameFinished]);
 
-  function handleNewPuzzle() {
-    setLoading(true);
-    setGenerationFailed(false);
-    setRegionColors(null);
-    setUserBoard(Array.from({ length: 8 }, () => Array(8).fill("")));
-    setConflictCells(new Set());
-    setSolvedModalOpen(false);
-    setGameFinished(false);
-    setTimeElapsed(0);
+    countSolutions(0);
 
-    setTimeout(() => {
-      const puzzle = generateCarvedPuzzle(); // up to 500 tries
-      if (!puzzle) {
-        setGenerationFailed(true);
-      } else {
-        setRegionColors(puzzle);
+    return {
+      isUnique: solutionCount === 1,
+      solution: firstSolution,
+    };
+  };
+
+  // Generate a puzzle with a unique solution
+  const generatePuzzle = (boardSize) => {
+    // Generate regions
+    let newRegions;
+    let uniqueInfo;
+
+    // Keep generating regions until we find one with a unique solution
+    let attempts = 0;
+    do {
+      if (attempts > 10) {
+        throw new Error(
+          "Could not generate a puzzle with a unique solution after 10 attempts"
+        );
       }
-      setLoading(false);
-    }, 50);
-  }
 
-  function handleResetPuzzle() {
-    if (!loading && regionColors) {
-      setUserBoard(Array.from({ length: 8 }, () => Array(8).fill("")));
-      setConflictCells(new Set());
-      setSolvedModalOpen(false);
-      setGameFinished(false);
-      setTimeElapsed(0);
+      newRegions = generateRegions(boardSize);
+      uniqueInfo = hasUniqueSolution(newRegions);
+      attempts++;
+    } while (!uniqueInfo.isUnique);
+
+    return {
+      newRegions,
+      newSolution: uniqueInfo.solution,
+    };
+  };
+
+  // Start the timer
+  const startTimer = () => {
+    if (timerInterval) clearInterval(timerInterval);
+
+    setTimer(0);
+    const interval = setInterval(() => {
+      setTimer((prev) => prev + 1);
+    }, 1000);
+
+    setTimerInterval(interval);
+  };
+
+  // Handle cell click
+  const cellClick = (row, col) => {
+    if (loading) return;
+
+    // Cycle cell state: empty -> marked -> queen -> empty
+    const newBoard = [...board];
+    newBoard[row] = [...newBoard[row]];
+    newBoard[row][col] = (newBoard[row][col] + 1) % 3;
+    setBoard(newBoard);
+
+    // Validate board and check for errors
+    validateBoard(newBoard);
+  };
+
+  // Find conflict reason between two queens
+  const findConflictReason = (q1, q2) => {
+    if (q1.row === q2.row) return "same row";
+    if (q1.col === q2.col) return "same column";
+    if (q1.region === q2.region) return "same region";
+
+    const rowDiff = Math.abs(q1.row - q2.row);
+    const colDiff = Math.abs(q1.col - q2.col);
+
+    // Check if queens are adjacent (horizontally, vertically, or diagonally)
+    if (rowDiff <= 1 && colDiff <= 1) {
+      if (rowDiff === 1 && colDiff === 1) return "touching diagonally";
+      return "touching horizontally/vertically";
     }
-  }
 
-  /** Cell click => cycle "" -> "X" -> "Q" -> "" */
-  function handleCellClick(r, c) {
-    if (loading || !regionColors) return;
-    setUserBoard((prev) => {
-      const copy = prev.map((row) => [...row]);
-      const cur = copy[r][c];
-      let next = "";
-      if (cur === "") {
-        next = "X";
-      } else if (cur === "X") {
-        next = "Q";
-      } else if (cur === "Q") {
-        next = "";
+    return null;
+  };
+
+  // Check for rule violations
+  const validateBoard = (currentBoard = board) => {
+    if (!currentBoard || !regions || currentBoard.length === 0) return;
+
+    const boardSize = currentBoard.length;
+    const errors = [];
+    const pairs = [];
+
+    // Find all queens
+    const queens = [];
+    for (let r = 0; r < boardSize; r++) {
+      for (let c = 0; c < boardSize; c++) {
+        if (currentBoard[r][c] === 2) {
+          queens.push({ row: r, col: c, region: regions[r][c] });
+        }
       }
-      copy[r][c] = next;
-      return copy;
-    });
-  }
+    }
 
-  function handleCloseModal() {
-    setSolvedModalOpen(false);
-  }
+    // Check for conflicts
+    for (let i = 0; i < queens.length; i++) {
+      const q1 = queens[i];
+      let hasError = false;
 
-  if (loading || !regionColors) {
-    return (
-      <div className="game-container">
-        <h1>Queens Game</h1>
-        {loading && <p>Generating puzzle (up to 500 tries). Please wait...</p>}
-        {generationFailed && (
-          <>
-            <p>Could not generate puzzle after many tries.</p>
-            <button onClick={handleNewPuzzle}>Try Again</button>
-          </>
-        )}
-      </div>
+      // Check against other queens
+      for (let j = i + 1; j < queens.length; j++) {
+        const q2 = queens[j];
+
+        const conflictReason = findConflictReason(q1, q2);
+
+        if (conflictReason) {
+          hasError = true;
+
+          // Add both queens to errors list
+          if (!errors.includes(`${q1.row}-${q1.col}`)) {
+            errors.push(`${q1.row}-${q1.col}`);
+          }
+          if (!errors.includes(`${q2.row}-${q2.col}`)) {
+            errors.push(`${q2.row}-${q2.col}`);
+          }
+
+          // Save the conflict pair for highlighting
+          pairs.push({
+            cell1: `${q1.row}-${q1.col}`,
+            cell2: `${q2.row}-${q2.col}`,
+            reason: conflictReason,
+          });
+        }
+      }
+    }
+
+    setErrorCells(errors);
+    setConflictPairs(pairs);
+
+    // Check win condition
+    if (queens.length === boardSize && errors.length === 0) {
+      // Count queens in each row, column, and region
+      const rowCounts = Array(boardSize).fill(0);
+      const colCounts = Array(boardSize).fill(0);
+      const regionCounts = Array(boardSize).fill(0);
+
+      for (const q of queens) {
+        rowCounts[q.row]++;
+        colCounts[q.col]++;
+        regionCounts[q.region]++;
+      }
+
+      // Check if every row, column, and region has exactly one queen
+      if (
+        rowCounts.every((c) => c === 1) &&
+        colCounts.every((c) => c === 1) &&
+        regionCounts.every((c) => c === 1)
+      ) {
+        gameWon();
+      }
+    }
+  };
+
+  // Check if a cell is involved in a conflict
+  const getConflictInfo = (row, col) => {
+    const cellId = `${row}-${col}`;
+
+    // Find all conflicts involving this cell
+    const conflicts = conflictPairs.filter(
+      (pair) => pair.cell1 === cellId || pair.cell2 === cellId
     );
-  }
 
-  // puzzle is ready
+    if (conflicts.length === 0) return null;
+
+    return conflicts[0]; // Return the first conflict
+  };
+
+  // Handle game win
+  const gameWon = () => {
+    if (timerInterval) clearInterval(timerInterval);
+    setMessage("Congratulations! You solved the puzzle!");
+  };
+
+  // Format time for display
+  const formatTime = (seconds) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins.toString().padStart(2, "0")}:${secs
+      .toString()
+      .padStart(2, "0")}`;
+  };
+
+  // Start a new game
+  const newGame = () => {
+    setMessage("");
+    initializeGame(size);
+  };
+
+  // Reset the current game
+  const reset = () => {
+    // Clear all user placements
+    const resetBoard = Array(size)
+      .fill()
+      .map(() => Array(size).fill(0));
+    setBoard(resetBoard);
+    setErrorCells([]);
+    setConflictPairs([]);
+    setMessage("");
+    startTimer();
+  };
+
+  // Give a hint (place a queen correctly from the solution)
+  const giveHint = () => {
+    if (loading || !solution) return;
+
+    const newBoard = JSON.parse(JSON.stringify(board));
+    const boardSize = newBoard.length;
+
+    // Find rows without queens
+    const rowsWithoutQueens = [];
+    for (let r = 0; r < boardSize; r++) {
+      let hasQueen = false;
+      for (let c = 0; c < boardSize; c++) {
+        if (newBoard[r][c] === 2) {
+          hasQueen = true;
+          break;
+        }
+      }
+      if (!hasQueen) {
+        rowsWithoutQueens.push(r);
+      }
+    }
+
+    // If no empty rows, provide a message
+    if (rowsWithoutQueens.length === 0) {
+      setMessage("All rows have queens. Check for conflicts.");
+      return;
+    }
+
+    // Randomly select a row without a queen
+    const randomRow =
+      rowsWithoutQueens[Math.floor(Math.random() * rowsWithoutQueens.length)];
+
+    // Place a queen from the solution
+    for (let c = 0; c < boardSize; c++) {
+      if (solution[randomRow][c] === 2) {
+        newBoard[randomRow][c] = 2;
+        setBoard(newBoard);
+        validateBoard(newBoard);
+        return;
+      }
+    }
+  };
+
   return (
-    <div className="game-container">
+    <div className="App">
       <h1>Queens Game</h1>
-      <p>Time: {formatTime(timeElapsed)}</p>
 
-      <div className="button-bar">
-        <button onClick={handleNewPuzzle}>New Puzzle</button>
-        <button onClick={handleResetPuzzle}>Reset Puzzle</button>
+      <div id="message">{message}</div>
+
+      <div id="timer">Time: {formatTime(timer)}</div>
+
+      <div className="controls">
+        <div id="difficulty">
+          <label htmlFor="size-select">Board Size:</label>
+          <select
+            id="size-select"
+            value={size}
+            onChange={(e) => setSize(parseInt(e.target.value))}
+            disabled={loading}
+          >
+            <option value="6">6x6</option>
+            <option value="8">8x8</option>
+            <option value="10">10x10</option>
+          </select>
+        </div>
+        <button onClick={newGame} disabled={loading}>
+          New Game
+        </button>
+        <button onClick={reset} disabled={loading}>
+          Reset
+        </button>
+        <button onClick={giveHint} disabled={loading}>
+          Hint
+        </button>
       </div>
 
-      <div className="board-container">
-        {userBoard.map((rowData, rIdx) => (
-          <div className="board-row" key={rIdx}>
-            {rowData.map((val, cIdx) => {
-              const regID = regionColors[rIdx][cIdx];
-              const bgColor = regionColorMap[regID] || "#555";
-
-              const cellKey = `${rIdx},${cIdx}`;
-              const inConflict = conflictCells.has(cellKey);
-
-              let content = null;
-              if (val === "Q") {
-                // Render the fancy Crown
-                content = <CrownSVG color="#FFF" size="1.5em" />;
-              } else if (val === "X") {
-                // Show "X" in gold
-                content = <span style={{ color: "#FFD700" }}>X</span>;
-              }
-
-              const cellStyle = {
-                backgroundColor: bgColor,
-                border: inConflict ? "2px solid red" : "1px solid #222",
-              };
-
-              return (
+      {loading ? (
+        <div className="loading">
+          <div className="spinner"></div>
+          <p>Generating puzzle...</p>
+        </div>
+      ) : (
+        <div id="game-container">
+          <div className="color-legend">
+            {colors.map((color, i) => (
+              <div className="legend-item" key={i}>
                 <div
-                  key={cIdx}
-                  className="cell"
-                  style={cellStyle}
-                  onClick={() => handleCellClick(rIdx, cIdx)}
-                >
-                  {content}
-                </div>
-              );
-            })}
+                  className="legend-color"
+                  style={{ backgroundColor: color }}
+                ></div>
+                <span>{`Region ${i + 1}`}</span>
+              </div>
+            ))}
           </div>
-        ))}
-      </div>
 
-      {solvedModalOpen && (
-        <div className="modal-backdrop">
-          <div className="modal">
-            <h2>Congratulations!</h2>
-            <p>You solved the puzzle!</p>
-            <p>Your time: {formatTime(timeElapsed)}</p>
-            <button onClick={handleCloseModal}>Close</button>
+          <div
+            id="game-board"
+            style={{
+              gridTemplateColumns: `repeat(${size}, 60px)`,
+              gridTemplateRows: `repeat(${size}, 60px)`,
+            }}
+          >
+            {board.map((row, i) =>
+              row.map((cell, j) => {
+                const isError = errorCells.includes(`${i}-${j}`);
+                const conflictInfo = isError ? getConflictInfo(i, j) : null;
+                const regionColor =
+                  regions[i] && regions[i][j] !== undefined
+                    ? colors[regions[i][j]]
+                    : "#fff";
+
+                return (
+                  <div
+                    key={`${i}-${j}`}
+                    className={`cell ${isError ? "error" : ""} ${
+                      conflictInfo ? "has-tooltip" : ""
+                    }`}
+                    style={{ backgroundColor: regionColor }}
+                    onClick={() => cellClick(i, j)}
+                    title={
+                      conflictInfo ? `Conflict: ${conflictInfo.reason}` : ""
+                    }
+                  >
+                    {cell === 1 ? (
+                      <span className="mark">X</span>
+                    ) : cell === 2 ? (
+                      <span className="queen">♛</span>
+                    ) : null}
+                  </div>
+                );
+              })
+            )}
           </div>
         </div>
       )}
+
+      <div id="rules">
+        <h3>Rules:</h3>
+        <p>Place exactly one queen in each row, column, and colored region.</p>
+        <p>No two queens may touch horizontally, vertically, or diagonally.</p>
+        <p>Click a cell to cycle: Empty → Marked (X) → Queen → Empty</p>
+      </div>
     </div>
   );
 }
