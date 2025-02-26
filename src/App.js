@@ -13,6 +13,12 @@ function App() {
   const [errorCells, setErrorCells] = useState([]);
   const [loading, setLoading] = useState(true);
   const [conflictPairs, setConflictPairs] = useState([]);
+  const [autoMarkEnabled, setAutoMarkEnabled] = useState(true);
+  const [history, setHistory] = useState([]);
+  const [autoMarkedCells, setAutoMarkedCells] = useState({});
+  const [showWinModal, setShowWinModal] = useState(false);
+  const [winTime, setWinTime] = useState(0);
+  const [gameIsWon, setGameIsWon] = useState(false);
 
   // Initialize the game
   useEffect(() => {
@@ -28,6 +34,17 @@ function App() {
     setErrorCells([]);
     setConflictPairs([]);
     setMessage("");
+    setHistory([]);
+    setAutoMarkedCells({});
+    setShowWinModal(false);
+    setGameIsWon(false);
+
+    // Clear existing timer
+    if (timerInterval) {
+      clearInterval(timerInterval);
+      setTimerInterval(null);
+    }
+    setTimer(0);
 
     // Generate colors
     const newColors = generateColors(boardSize);
@@ -47,12 +64,20 @@ function App() {
         // Set state
         setRegions(newRegions);
         setSolution(newSolution);
-        setBoard(
-          Array(boardSize)
-            .fill()
-            .map(() => Array(boardSize).fill(0))
-        );
+        const initialBoard = Array(boardSize)
+          .fill()
+          .map(() => Array(boardSize).fill(0));
+        setBoard(initialBoard);
 
+        // Save initial state to history
+        setHistory([
+          {
+            board: initialBoard,
+            autoMarkedCells: {},
+          },
+        ]);
+
+        // Start the timer
         startTimer();
         setLoading(false);
       } catch (error) {
@@ -152,15 +177,6 @@ function App() {
     }
 
     return regionBoard;
-  };
-
-  // Check if queens are adjacent (horizontally, vertically, or diagonally)
-  const areQueensAdjacent = (row1, col1, row2, col2) => {
-    const rowDiff = Math.abs(row1 - row2);
-    const colDiff = Math.abs(col1 - col2);
-
-    // Adjacent if they're 1 cell away in any direction (including diagonally)
-    return rowDiff <= 1 && colDiff <= 1;
   };
 
   // Check if queen placement is valid
@@ -312,7 +328,10 @@ function App() {
 
   // Start the timer
   const startTimer = () => {
-    if (timerInterval) clearInterval(timerInterval);
+    // Clear any existing timer first
+    if (timerInterval) {
+      clearInterval(timerInterval);
+    }
 
     setTimer(0);
     const interval = setInterval(() => {
@@ -322,18 +341,198 @@ function App() {
     setTimerInterval(interval);
   };
 
+  // Auto-mark cells based on queen placement
+  const autoMarkCells = (row, col, currentBoard, currentAutoMarkedCells) => {
+    if (!autoMarkEnabled)
+      return { board: currentBoard, autoMarkedCells: currentAutoMarkedCells };
+
+    const newBoard = JSON.parse(JSON.stringify(currentBoard));
+    const newAutoMarkedCells = { ...currentAutoMarkedCells };
+    const queenKey = `${row}-${col}`;
+    const boardSize = newBoard.length;
+    const currentRegion = regions[row][col];
+
+    // If this queen doesn't have a list in autoMarkedCells, create one
+    if (!newAutoMarkedCells[queenKey]) {
+      newAutoMarkedCells[queenKey] = [];
+    }
+
+    // Mark cells in the same row
+    for (let c = 0; c < boardSize; c++) {
+      if (c !== col && newBoard[row][c] === 0) {
+        newBoard[row][c] = 1; // Mark as 'X'
+        newAutoMarkedCells[queenKey].push(`${row}-${c}`);
+      }
+    }
+
+    // Mark cells in the same column
+    for (let r = 0; r < boardSize; r++) {
+      if (r !== row && newBoard[r][col] === 0) {
+        newBoard[r][col] = 1; // Mark as 'X'
+        newAutoMarkedCells[queenKey].push(`${r}-${col}`);
+      }
+    }
+
+    // Mark adjacent cells (including diagonally)
+    for (
+      let r = Math.max(0, row - 1);
+      r <= Math.min(boardSize - 1, row + 1);
+      r++
+    ) {
+      for (
+        let c = Math.max(0, col - 1);
+        c <= Math.min(boardSize - 1, col + 1);
+        c++
+      ) {
+        if ((r !== row || c !== col) && newBoard[r][c] === 0) {
+          newBoard[r][c] = 1; // Mark as 'X'
+          newAutoMarkedCells[queenKey].push(`${r}-${c}`);
+        }
+      }
+    }
+
+    // Mark cells in the same region
+    for (let r = 0; r < boardSize; r++) {
+      for (let c = 0; c < boardSize; c++) {
+        if (
+          (r !== row || c !== col) &&
+          regions[r][c] === currentRegion &&
+          newBoard[r][c] === 0
+        ) {
+          newBoard[r][c] = 1; // Mark as 'X'
+          newAutoMarkedCells[queenKey].push(`${r}-${c}`);
+        }
+      }
+    }
+
+    return { board: newBoard, autoMarkedCells: newAutoMarkedCells };
+  };
+
+  // Remove auto-marked cells when queen is removed
+  const removeAutoMarkedCells = (
+    row,
+    col,
+    currentBoard,
+    currentAutoMarkedCells
+  ) => {
+    const newBoard = JSON.parse(JSON.stringify(currentBoard));
+    const newAutoMarkedCells = { ...currentAutoMarkedCells };
+    const queenKey = `${row}-${col}`;
+
+    // If this queen has auto-marked cells, remove them
+    if (newAutoMarkedCells[queenKey]) {
+      for (const cellKey of newAutoMarkedCells[queenKey]) {
+        const [r, c] = cellKey.split("-").map(Number);
+
+        // Only clear the X if no other queen is claiming it
+        let keepMark = false;
+        for (const otherQueenKey in newAutoMarkedCells) {
+          if (
+            otherQueenKey !== queenKey &&
+            newAutoMarkedCells[otherQueenKey].includes(cellKey)
+          ) {
+            keepMark = true;
+            break;
+          }
+        }
+
+        if (!keepMark) {
+          newBoard[r][c] = 0; // Clear the mark
+        }
+      }
+
+      // Remove this queen's entry
+      delete newAutoMarkedCells[queenKey];
+    }
+
+    return { board: newBoard, autoMarkedCells: newAutoMarkedCells };
+  };
+
   // Handle cell click
   const cellClick = (row, col) => {
-    if (loading) return;
+    if (loading || gameIsWon) return;
 
-    // Cycle cell state: empty -> marked -> queen -> empty
-    const newBoard = [...board];
-    newBoard[row] = [...newBoard[row]];
-    newBoard[row][col] = (newBoard[row][col] + 1) % 3;
+    // Save current state for undo
+    saveState();
+
+    // Get current cell state
+    const currentState = board[row][col];
+    const newBoard = JSON.parse(JSON.stringify(board));
+    let newAutoMarkedCells = { ...autoMarkedCells };
+
+    // Handle based on current state
+    if (currentState === 0) {
+      // Empty to X
+      newBoard[row][col] = 1;
+    } else if (currentState === 1) {
+      // X to Queen
+      newBoard[row][col] = 2;
+      // Auto-mark cells for this queen
+      const result = autoMarkCells(row, col, newBoard, newAutoMarkedCells);
+      newBoard[row][col] = 2; // Ensure queen is still there
+      newAutoMarkedCells = result.autoMarkedCells;
+
+      // Copy the auto-marked cells to the new board
+      for (const queenKey in result.autoMarkedCells) {
+        for (const cellKey of result.autoMarkedCells[queenKey]) {
+          const [r, c] = cellKey.split("-").map(Number);
+          if (newBoard[r][c] === 0) {
+            // Only mark if cell is empty
+            newBoard[r][c] = 1;
+          }
+        }
+      }
+    } else if (currentState === 2) {
+      // Queen to Empty
+      // First remove auto-marked cells for this queen
+      const result = removeAutoMarkedCells(
+        row,
+        col,
+        newBoard,
+        newAutoMarkedCells
+      );
+      newBoard[row][col] = 0; // Set to empty
+      newAutoMarkedCells = result.autoMarkedCells;
+
+      // Copy the remaining auto-marked cells
+      for (let r = 0; r < newBoard.length; r++) {
+        for (let c = 0; c < newBoard[r].length; c++) {
+          if (r === row && c === col) continue;
+          newBoard[r][c] = result.board[r][c];
+        }
+      }
+    }
+
+    // Update state
     setBoard(newBoard);
+    setAutoMarkedCells(newAutoMarkedCells);
 
     // Validate board and check for errors
     validateBoard(newBoard);
+  };
+
+  // Save current state to history
+  const saveState = () => {
+    const currentState = {
+      board: JSON.parse(JSON.stringify(board)),
+      autoMarkedCells: JSON.parse(JSON.stringify(autoMarkedCells)),
+    };
+    setHistory((prev) => [...prev, currentState]);
+  };
+
+  // Undo last move
+  const undo = () => {
+    if (history.length <= 1 || gameIsWon) return; // Nothing to undo or game is won
+
+    const newHistory = [...history];
+    newHistory.pop(); // Remove current state
+    const previousState = newHistory[newHistory.length - 1];
+
+    setBoard(previousState.board);
+    setAutoMarkedCells(previousState.autoMarkedCells);
+    setHistory(newHistory);
+
+    validateBoard(previousState.board);
   };
 
   // Find conflict reason between two queens
@@ -356,7 +555,15 @@ function App() {
 
   // Check for rule violations
   const validateBoard = (currentBoard = board) => {
-    if (!currentBoard || !regions || currentBoard.length === 0) return;
+    if (
+      !currentBoard ||
+      !regions ||
+      currentBoard.length === 0 ||
+      gameIsWon ||
+      loading
+    ) {
+      return;
+    }
 
     const boardSize = currentBoard.length;
     const errors = [];
@@ -375,7 +582,6 @@ function App() {
     // Check for conflicts
     for (let i = 0; i < queens.length; i++) {
       const q1 = queens[i];
-      let hasError = false;
 
       // Check against other queens
       for (let j = i + 1; j < queens.length; j++) {
@@ -384,8 +590,6 @@ function App() {
         const conflictReason = findConflictReason(q1, q2);
 
         if (conflictReason) {
-          hasError = true;
-
           // Add both queens to errors list
           if (!errors.includes(`${q1.row}-${q1.col}`)) {
             errors.push(`${q1.row}-${q1.col}`);
@@ -426,7 +630,10 @@ function App() {
         colCounts.every((c) => c === 1) &&
         regionCounts.every((c) => c === 1)
       ) {
-        gameWon();
+        // Only trigger win if not already won
+        if (!gameIsWon) {
+          gameWon();
+        }
       }
     }
   };
@@ -447,8 +654,20 @@ function App() {
 
   // Handle game win
   const gameWon = () => {
-    if (timerInterval) clearInterval(timerInterval);
-    setMessage("Congratulations! You solved the puzzle!");
+    // Stop the timer
+    if (timerInterval) {
+      clearInterval(timerInterval);
+      setTimerInterval(null);
+    }
+
+    // Set win time before marking game as won
+    setWinTime(timer);
+
+    // Mark game as won to prevent multiple win triggers
+    setGameIsWon(true);
+
+    // Show the win modal
+    setShowWinModal(true);
   };
 
   // Format time for display
@@ -468,23 +687,34 @@ function App() {
 
   // Reset the current game
   const reset = () => {
-    // Clear all user placements
-    const resetBoard = Array(size)
-      .fill()
-      .map(() => Array(size).fill(0));
-    setBoard(resetBoard);
-    setErrorCells([]);
-    setConflictPairs([]);
-    setMessage("");
-    startTimer();
+    if (history.length > 0) {
+      // Reset to initial state
+      const initialState = history[0];
+      setBoard(initialState.board);
+      setAutoMarkedCells(initialState.autoMarkedCells);
+      setHistory([initialState]);
+      setErrorCells([]);
+      setConflictPairs([]);
+      setMessage("");
+
+      // Reset game won state
+      setGameIsWon(false);
+
+      // Restart timer
+      startTimer();
+    }
   };
 
   // Give a hint (place a queen correctly from the solution)
   const giveHint = () => {
-    if (loading || !solution) return;
+    if (loading || !solution || gameIsWon) return;
+
+    // Save current state for undo
+    saveState();
 
     const newBoard = JSON.parse(JSON.stringify(board));
     const boardSize = newBoard.length;
+    let newAutoMarkedCells = { ...autoMarkedCells };
 
     // Find rows without queens
     const rowsWithoutQueens = [];
@@ -515,7 +745,31 @@ function App() {
     for (let c = 0; c < boardSize; c++) {
       if (solution[randomRow][c] === 2) {
         newBoard[randomRow][c] = 2;
+
+        // Auto-mark cells for this queen
+        if (autoMarkEnabled) {
+          const result = autoMarkCells(
+            randomRow,
+            c,
+            newBoard,
+            newAutoMarkedCells
+          );
+          newAutoMarkedCells = result.autoMarkedCells;
+
+          // Copy the auto-marked cells
+          for (const queenKey in result.autoMarkedCells) {
+            for (const cellKey of result.autoMarkedCells[queenKey]) {
+              const [r, c] = cellKey.split("-").map(Number);
+              if (newBoard[r][c] === 0) {
+                // Only mark if cell is empty
+                newBoard[r][c] = 1;
+              }
+            }
+          }
+        }
+
         setBoard(newBoard);
+        setAutoMarkedCells(newAutoMarkedCells);
         validateBoard(newBoard);
         return;
       }
@@ -530,6 +784,60 @@ function App() {
     if (size === 10) return "var(--cell-size-large)";
     return "var(--cell-size-medium)";
   };
+
+  // Queen SVG component
+  const QueenIcon = ({ color = "black" }) => (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      viewBox="0 0 220 220"
+      style={{
+        width: "65%",
+        height: "65%",
+        filter: "drop-shadow(1px 1px 1px rgba(0,0,0,0.3))",
+      }}
+    >
+      <path
+        d="M220,98.865c0-12.728-10.355-23.083-23.083-23.083s-23.083,10.355-23.083,23.083c0,5.79,2.148,11.084,5.681,15.14
+        l-23.862,21.89L125.22,73.002l17.787-20.892l-32.882-38.623L77.244,52.111l16.995,19.962l-30.216,63.464l-23.527-21.544
+        c3.528-4.055,5.671-9.344,5.671-15.128c0-12.728-10.355-23.083-23.083-23.083C10.355,75.782,0,86.137,0,98.865
+        c0,11.794,8.895,21.545,20.328,22.913l7.073,84.735H192.6l7.073-84.735C211.105,120.41,220,110.659,220,98.865z"
+        fill={color}
+        stroke={color === "white" ? "#333" : "none"}
+        strokeWidth="1"
+      />
+    </svg>
+  );
+
+  // Win modal component
+  const WinModal = () => (
+    <div className={`win-modal ${showWinModal ? "show" : ""}`}>
+      <div className="win-modal-content">
+        <div className="win-modal-header">
+          <h2>🎉 Congratulations! 🎉</h2>
+          <button
+            className="close-button"
+            onClick={() => setShowWinModal(false)}
+          >
+            ×
+          </button>
+        </div>
+        <div className="win-modal-body">
+          <p>You've solved the puzzle!</p>
+          <p>Your time: {formatTime(winTime)}</p>
+          <div className="win-buttons">
+            <button
+              onClick={() => {
+                setShowWinModal(false);
+                newGame();
+              }}
+            >
+              New Game
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
 
   return (
     <div className="App">
@@ -559,9 +867,25 @@ function App() {
         <button onClick={reset} disabled={loading}>
           Reset
         </button>
+        <button onClick={undo} disabled={loading || history.length <= 1}>
+          Undo
+        </button>
         <button onClick={giveHint} disabled={loading}>
           Hint
         </button>
+      </div>
+
+      <div className="toggle-container">
+        <label className="toggle-switch">
+          <input
+            type="checkbox"
+            checked={autoMarkEnabled}
+            onChange={() => setAutoMarkEnabled(!autoMarkEnabled)}
+            disabled={loading}
+          />
+          <span className="toggle-slider"></span>
+        </label>
+        <span className="toggle-label">Assisted Mode</span>
       </div>
 
       {loading ? (
@@ -615,7 +939,7 @@ function App() {
                     {cell === 1 ? (
                       <span className="mark">X</span>
                     ) : cell === 2 ? (
-                      <span className="queen">♛</span>
+                      <QueenIcon color="#111" />
                     ) : null}
                   </div>
                 );
@@ -631,6 +955,8 @@ function App() {
         <p>No two queens may touch horizontally, vertically, or diagonally.</p>
         <p>Click a cell to cycle: Empty → Marked (X) → Queen → Empty</p>
       </div>
+
+      <WinModal />
     </div>
   );
 }
