@@ -522,6 +522,15 @@ function App() {
     }
   };
 
+  // Calculate cell size based on board size and screen width
+  const getCellSize = () => {
+    // Default sizes
+    if (size === 6) return "var(--cell-size-small)";
+    if (size === 8) return "var(--cell-size-medium)";
+    if (size === 10) return "var(--cell-size-large)";
+    return "var(--cell-size-medium)";
+  };
+
   return (
     <div className="App">
       <h1>Queens Game</h1>
@@ -576,9 +585,10 @@ function App() {
 
           <div
             id="game-board"
+            className={`board-size-${size}`}
             style={{
-              gridTemplateColumns: `repeat(${size}, 60px)`,
-              gridTemplateRows: `repeat(${size}, 60px)`,
+              gridTemplateColumns: `repeat(${size}, ${getCellSize()})`,
+              gridTemplateRows: `repeat(${size}, ${getCellSize()})`,
             }}
           >
             {board.map((row, i) =>
