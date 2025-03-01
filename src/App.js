@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import "./App.css";
 
 function App() {
@@ -20,16 +20,61 @@ function App() {
   const [winTime, setWinTime] = useState(0);
   const [gameIsWon, setGameIsWon] = useState(false);
 
-  // Initialize the game
+  // New state variables and refs for the new features
+  const [isMarking, setIsMarking] = useState(false);
+  const currentGenerationRef = useRef(0);
+  const longPressTimeoutRef = useRef(null);
+  const markingModeRef = useRef(false);
+  const startCellRef = useRef(null);
+  const dragPathRef = useRef(null);
+  const lastCellRef = useRef(null);
+  const isDraggingRef = useRef(false);
+
+  // Initialize the gamefhandle
   useEffect(() => {
     initializeGame(size);
 
     return () => {
       if (timerInterval) clearInterval(timerInterval);
     };
-  }, [size]);
+  }, []);
+
+  // Add useEffect for global mouse up handling
+  useEffect(() => {
+    const handleGlobalMouseUp = () => {
+      // Clear marking mode
+      if (markingModeRef.current) {
+        markingModeRef.current = false;
+        setIsMarking(false);
+      }
+
+      // Clear any pending timeout
+      if (longPressTimeoutRef.current) {
+        clearTimeout(longPressTimeoutRef.current);
+        longPressTimeoutRef.current = null;
+      }
+
+      // Reset all tracking refs
+      isDraggingRef.current = false;
+      dragPathRef.current = null;
+      startCellRef.current = null;
+      lastCellRef.current = null;
+    };
+
+    window.addEventListener("mouseup", handleGlobalMouseUp);
+    window.addEventListener("touchend", handleGlobalMouseUp);
+
+    return () => {
+      window.removeEventListener("mouseup", handleGlobalMouseUp);
+      window.removeEventListener("touchend", handleGlobalMouseUp);
+    };
+  }, []);
 
   const initializeGame = async (boardSize) => {
+    // Cancel any existing generation
+    const newGenerationId = Date.now();
+    currentGenerationRef.current = newGenerationId;
+
     setLoading(true);
     setErrorCells([]);
     setConflictPairs([]);
@@ -58,8 +103,18 @@ function App() {
 
     // Generate regions and puzzle in a non-blocking way
     setTimeout(() => {
+      // Check if this generation is still the current one
+      if (currentGenerationRef.current !== newGenerationId) {
+        return; // Generation was cancelled
+      }
+
       try {
         const { newRegions, newSolution } = generatePuzzle(boardSize);
+
+        // Check again if generation is still valid
+        if (currentGenerationRef.current !== newGenerationId) {
+          return; // Generation was cancelled
+        }
 
         // Set state
         setRegions(newRegions);
@@ -82,8 +137,12 @@ function App() {
         setLoading(false);
       } catch (error) {
         console.error("Error generating puzzle:", error);
-        // Retry with a clean slate
-        initializeGame(boardSize);
+
+        // Check if still the current generation before retrying
+        if (currentGenerationRef.current === newGenerationId) {
+          // Retry with a clean slate
+          initializeGame(boardSize);
+        }
       }
     }, 100);
   };
@@ -511,6 +570,161 @@ function App() {
     validateBoard(newBoard);
   };
 
+  // New mouse event handlers for long press and drag marking
+  const handleCellMouseDown = (row, col) => {
+    if (loading || gameIsWon) return;
+
+    // Start tracking this as a potential drag operation
+    isDraggingRef.current = false;
+    dragPathRef.current = [];
+    startCellRef.current = { row, col };
+    lastCellRef.current = { row, col };
+
+    // Only start a timer to detect long press
+    longPressTimeoutRef.current = setTimeout(() => {
+      // We've determined this is a drag operation
+      isDraggingRef.current = true;
+      markingModeRef.current = true;
+      setIsMarking(true);
+      saveState(); // Save state for undo
+
+      // Mark the initial cell
+      if (board[row][col] === 0) {
+        const newBoard = JSON.parse(JSON.stringify(board));
+        newBoard[row][col] = 1; // Mark with X
+        setBoard(newBoard);
+        validateBoard(newBoard);
+      }
+    }, 130); // Balance between responsiveness and accidental triggers
+  };
+
+  const handleCellMouseUp = (row, col) => {
+    // Clear any pending long-press detection
+    if (longPressTimeoutRef.current) {
+      clearTimeout(longPressTimeoutRef.current);
+      longPressTimeoutRef.current = null;
+    }
+
+    // If we're in marking mode, just exit the mode
+    if (markingModeRef.current) {
+      markingModeRef.current = false;
+      setIsMarking(false);
+    }
+    // If we were NOT dragging AND mouse up is on the same cell as mouse down, treat as a normal click
+    else if (
+      !isDraggingRef.current &&
+      startCellRef.current &&
+      startCellRef.current.row === row &&
+      startCellRef.current.col === col
+    ) {
+      cellClick(row, col);
+    }
+
+    // Reset all refs
+    isDraggingRef.current = false;
+    dragPathRef.current = null;
+    startCellRef.current = null;
+    lastCellRef.current = null;
+  };
+
+  // Improved mouse enter to handle fast mouse movements
+  const handleCellMouseEnter = (row, col) => {
+    // Skip if we're not in marking mode or not the same cell
+    if (
+      !markingModeRef.current ||
+      (lastCellRef.current &&
+        lastCellRef.current.row === row &&
+        lastCellRef.current.col === col)
+    ) {
+      return;
+    }
+
+    // Get the current and last cell
+    const newPos = { row, col };
+    const lastPos = lastCellRef.current;
+
+    if (lastPos) {
+      // Mark all cells along the path from last position to current position
+      const cellsToMark = getCellsAlongLine(lastPos.row, lastPos.col, row, col);
+
+      if (cellsToMark.length > 0) {
+        const newBoard = JSON.parse(JSON.stringify(board));
+
+        for (const cell of cellsToMark) {
+          if (newBoard[cell.row][cell.col] === 0) {
+            newBoard[cell.row][cell.col] = 1; // Mark with X
+          }
+        }
+
+        setBoard(newBoard);
+        validateBoard(newBoard);
+      }
+    }
+
+    // Update last cell position
+    lastCellRef.current = newPos;
+  };
+
+  // Bresenham's line algorithm to get all cells along a line
+  const getCellsAlongLine = (x0, y0, x1, y1) => {
+    const cells = [];
+
+    const dx = Math.abs(x1 - x0);
+    const dy = Math.abs(y1 - y0);
+    const sx = x0 < x1 ? 1 : -1;
+    const sy = y0 < y1 ? 1 : -1;
+    let err = dx - dy;
+
+    while (true) {
+      cells.push({ row: x0, col: y0 });
+
+      if (x0 === x1 && y0 === y1) break;
+
+      const e2 = 2 * err;
+      if (e2 > -dy) {
+        if (x0 === x1) break;
+        err -= dy;
+        x0 += sx;
+      }
+      if (e2 < dx) {
+        if (y0 === y1) break;
+        err += dx;
+        y0 += sy;
+      }
+    }
+
+    return cells;
+  };
+
+  // Touch event handlers for mobile
+  const handleCellTouchStart = (row, col) => {
+    handleCellMouseDown(row, col);
+  };
+
+  const handleCellTouchMove = (e) => {
+    if (!markingModeRef.current) return;
+
+    // Prevent scrolling when marking
+    e.preventDefault();
+
+    // Get the element under the touch point
+    const touch = e.touches[0];
+    const element = document.elementFromPoint(touch.clientX, touch.clientY);
+
+    if (element && element.classList.contains("cell")) {
+      // Extract row and col from the data attribute
+      const cellPos = element.getAttribute("data-cell-pos");
+      if (cellPos) {
+        const [row, col] = cellPos.split("-").map(Number);
+        handleCellMouseEnter(row, col);
+      }
+    }
+  };
+
+  const handleCellTouchEnd = (row, col) => {
+    handleCellMouseUp(row, col);
+  };
+
   // Save current state to history
   const saveState = () => {
     const currentState = {
@@ -853,8 +1067,11 @@ function App() {
           <select
             id="size-select"
             value={size}
-            onChange={(e) => setSize(parseInt(e.target.value))}
-            disabled={loading}
+            onChange={(e) => {
+              const newSize = parseInt(e.target.value);
+              setSize(newSize);
+              initializeGame(newSize);
+            }}
           >
             <option value="6">6x6</option>
             <option value="8">8x8</option>
@@ -909,7 +1126,7 @@ function App() {
 
           <div
             id="game-board"
-            className={`board-size-${size}`}
+            className={`board-size-${size} ${isMarking ? "marking-mode" : ""}`}
             style={{
               gridTemplateColumns: `repeat(${size}, ${getCellSize()})`,
               gridTemplateRows: `repeat(${size}, ${getCellSize()})`,
@@ -931,7 +1148,14 @@ function App() {
                       conflictInfo ? "has-tooltip" : ""
                     }`}
                     style={{ backgroundColor: regionColor }}
-                    onClick={() => cellClick(i, j)}
+                    onMouseDown={() => handleCellMouseDown(i, j)}
+                    onMouseUp={() => handleCellMouseUp(i, j)}
+                    onMouseEnter={() => handleCellMouseEnter(i, j)}
+                    onTouchStart={() => handleCellTouchStart(i, j)}
+                    onTouchMove={handleCellTouchMove}
+                    onTouchEnd={() => handleCellTouchEnd(i, j)}
+                    onTouchCancel={() => handleCellTouchEnd(i, j)}
+                    data-cell-pos={`${i}-${j}`}
                     title={
                       conflictInfo ? `Conflict: ${conflictInfo.reason}` : ""
                     }
@@ -954,6 +1178,7 @@ function App() {
         <p>Place exactly one queen in each row, column, and colored region.</p>
         <p>No two queens may touch horizontally, vertically, or diagonally.</p>
         <p>Click a cell to cycle: Empty → Marked (X) → Queen → Empty</p>
+        <p>Long press and drag to mark multiple cells with X.</p>
       </div>
 
       <WinModal />
