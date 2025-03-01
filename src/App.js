@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import "./App.css";
 
 function App() {
@@ -20,6 +20,9 @@ function App() {
   const [winTime, setWinTime] = useState(0);
   const [gameIsWon, setGameIsWon] = useState(false);
 
+  // Add a ref to track the current generation ID
+  const generationIdRef = useRef(0);
+
   // Initialize the game
   useEffect(() => {
     initializeGame(size);
@@ -30,6 +33,10 @@ function App() {
   }, [size]);
 
   const initializeGame = async (boardSize) => {
+    // Increment generation ID to invalidate any in-progress generation
+    generationIdRef.current++;
+    const thisGenerationId = generationIdRef.current;
+
     setLoading(true);
     setErrorCells([]);
     setConflictPairs([]);
@@ -58,8 +65,18 @@ function App() {
 
     // Generate regions and puzzle in a non-blocking way
     setTimeout(() => {
+      // Check if this generation is still valid
+      if (thisGenerationId !== generationIdRef.current) {
+        return; // This generation has been superseded
+      }
+
       try {
         const { newRegions, newSolution } = generatePuzzle(boardSize);
+
+        // Check again if this generation is still valid
+        if (thisGenerationId !== generationIdRef.current) {
+          return; // This generation has been superseded
+        }
 
         // Set state
         setRegions(newRegions);
@@ -82,8 +99,10 @@ function App() {
         setLoading(false);
       } catch (error) {
         console.error("Error generating puzzle:", error);
-        // Retry with a clean slate
-        initializeGame(boardSize);
+        // Only retry if this generation is still current
+        if (thisGenerationId === generationIdRef.current) {
+          initializeGame(boardSize);
+        }
       }
     }, 100);
   };
@@ -854,7 +873,7 @@ function App() {
             id="size-select"
             value={size}
             onChange={(e) => setSize(parseInt(e.target.value))}
-            disabled={loading}
+            // Allow changing size even during loading
           >
             <option value="6">6x6</option>
             <option value="8">8x8</option>
@@ -902,7 +921,7 @@ function App() {
                   className="legend-color"
                   style={{ backgroundColor: color }}
                 ></div>
-                <span>{`Region ${i + 1}`}</span>
+                <span>Region {i + 1}</span>
               </div>
             ))}
           </div>
