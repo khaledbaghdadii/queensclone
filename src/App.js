@@ -133,65 +133,470 @@ function App() {
   };
 
   // Generate regions for the board
-  const generateRegions = (boardSize) => {
-    // Initialize all cells to -1 (unassigned)
+  // Replace the current generateRegions function with this one
+  const generateCreativeRegions = (boardSize) => {
+    // Initialize board with all cells unassigned (-1)
     let regionBoard = Array(boardSize)
       .fill()
       .map(() => Array(boardSize).fill(-1));
 
-    // Create region seeds (one per region)
-    for (let i = 0; i < boardSize; i++) {
-      let row, col;
-      do {
-        row = Math.floor(Math.random() * boardSize);
-        col = Math.floor(Math.random() * boardSize);
-      } while (regionBoard[row][col] !== -1);
+    // Define shape templates (relative coordinates)
+    const shapeTemplates = [
+      // Long horizontal line
+      {
+        cells: [
+          [0, 0],
+          [0, 1],
+          [0, 2],
+          [0, 3],
+          [0, 4],
+        ].slice(0, Math.min(5, boardSize)),
+        width: Math.min(5, boardSize),
+        height: 1,
+      },
+      // Long vertical line
+      {
+        cells: [
+          [0, 0],
+          [1, 0],
+          [2, 0],
+          [3, 0],
+          [4, 0],
+        ].slice(0, Math.min(5, boardSize)),
+        width: 1,
+        height: Math.min(5, boardSize),
+      },
+      // L-shape
+      {
+        cells: [
+          [0, 0],
+          [1, 0],
+          [2, 0],
+          [2, 1],
+          [2, 2],
+        ],
+        width: 3,
+        height: 3,
+      },
+      // Reverse L-shape
+      {
+        cells: [
+          [0, 2],
+          [1, 2],
+          [2, 0],
+          [2, 1],
+          [2, 2],
+        ],
+        width: 3,
+        height: 3,
+      },
+      // T-shape
+      {
+        cells: [
+          [0, 1],
+          [1, 0],
+          [1, 1],
+          [1, 2],
+          [2, 1],
+        ],
+        width: 3,
+        height: 3,
+      },
+      // Z-shape
+      {
+        cells: [
+          [0, 0],
+          [0, 1],
+          [1, 1],
+          [1, 2],
+        ],
+        width: 3,
+        height: 2,
+      },
+      // Square shape
+      {
+        cells: [
+          [0, 0],
+          [0, 1],
+          [1, 0],
+          [1, 1],
+        ],
+        width: 2,
+        height: 2,
+      },
+      // Diagonal-ish shape
+      {
+        cells: [
+          [0, 0],
+          [1, 0],
+          [1, 1],
+          [2, 1],
+          [2, 2],
+        ],
+        width: 3,
+        height: 3,
+      },
+      // U-shape
+      {
+        cells: [
+          [0, 0],
+          [0, 1],
+          [0, 2],
+          [1, 0],
+          [1, 2],
+        ],
+        width: 3,
+        height: 2,
+      },
+    ];
 
-      regionBoard[row][col] = i;
-    }
+    // Helper function to check if a shape fits at a position
+    const canPlaceShape = (template, r, c) => {
+      for (const [dr, dc] of template.cells) {
+        const nr = r + dr;
+        const nc = c + dc;
+        if (nr >= boardSize || nc >= boardSize || regionBoard[nr][nc] !== -1) {
+          return false;
+        }
+      }
+      return true;
+    };
 
-    // Grow regions until all cells are assigned
-    while (regionBoard.some((row) => row.some((cell) => cell === -1))) {
-      // For each region, try to grow it
-      for (let regionId = 0; regionId < boardSize; regionId++) {
-        // Find all cells of this region
-        const regionCells = [];
-        for (let r = 0; r < boardSize; r++) {
-          for (let c = 0; c < boardSize; c++) {
-            if (regionBoard[r][c] === regionId) {
-              regionCells.push({ row: r, col: c });
+    // Try to place interesting shapes for as many regions as possible
+    let regionId = 0;
+    const maxShapedRegions = Math.min(boardSize, boardSize <= 6 ? 5 : 8);
+
+    while (regionId < maxShapedRegions) {
+      // Select a random template that fits the remaining space
+      let template = null;
+      let position = null;
+
+      // Shuffle templates to get variety
+      const templates = shuffleArray([...shapeTemplates]);
+
+      // Try each template
+      for (const t of templates) {
+        // Skip templates that are too large for the board
+        if (t.width > boardSize || t.height > boardSize) continue;
+
+        // Try different positions
+        const positions = [];
+        for (let r = 0; r <= boardSize - t.height; r++) {
+          for (let c = 0; c <= boardSize - t.width; c++) {
+            if (canPlaceShape(t, r, c)) {
+              positions.push([r, c]);
             }
           }
         }
 
-        // For each cell in this region, try to grow to adjacent unassigned cells
-        for (const { row, col } of regionCells) {
-          // Try in all four directions
-          const directions = [
-            { dr: -1, dc: 0 },
-            { dr: 1, dc: 0 },
-            { dr: 0, dc: -1 },
-            { dr: 0, dc: 1 },
-          ];
+        if (positions.length > 0) {
+          template = t;
+          position = positions[Math.floor(Math.random() * positions.length)];
+          break;
+        }
+      }
 
-          for (const { dr, dc } of directions) {
-            const newRow = row + dr;
-            const newCol = col + dc;
-
-            // Check if valid and unassigned
-            if (
-              newRow >= 0 &&
-              newRow < boardSize &&
-              newCol >= 0 &&
-              newCol < boardSize &&
-              regionBoard[newRow][newCol] === -1
-            ) {
-              regionBoard[newRow][newCol] = regionId;
-              // Only grow one cell at a time (prevents one region from growing too fast)
+      // If no template fits, place a single cell
+      if (!template) {
+        for (let r = 0; r < boardSize; r++) {
+          for (let c = 0; c < boardSize; c++) {
+            if (regionBoard[r][c] === -1) {
+              regionBoard[r][c] = regionId;
+              regionId++;
               break;
             }
           }
+          if (regionId > maxShapedRegions) break;
         }
+      } else {
+        // Place the template
+        const [r, c] = position;
+        for (const [dr, dc] of template.cells) {
+          regionBoard[r + dr][c + dc] = regionId;
+        }
+        regionId++;
+      }
+    }
+
+    // For any remaining regions, create seeds
+    while (regionId < boardSize) {
+      let placed = false;
+      for (let r = 0; r < boardSize && !placed; r++) {
+        for (let c = 0; c < boardSize && !placed; c++) {
+          if (regionBoard[r][c] === -1) {
+            regionBoard[r][c] = regionId++;
+            placed = true;
+          }
+        }
+      }
+
+      if (!placed) break; // No more space for seeds
+    }
+
+    // Function to grow regions by adding adjacent cells
+    const growRegions = () => {
+      let changed = false;
+
+      // Find all empty cells adjacent to a region
+      const candidates = [];
+      for (let r = 0; r < boardSize; r++) {
+        for (let c = 0; c < boardSize; c++) {
+          if (regionBoard[r][c] === -1) {
+            const directions = [
+              [0, 1],
+              [1, 0],
+              [0, -1],
+              [-1, 0],
+            ];
+            const adjacentRegions = new Set();
+
+            for (const [dr, dc] of directions) {
+              const nr = r + dr;
+              const nc = c + dc;
+              if (
+                nr >= 0 &&
+                nr < boardSize &&
+                nc >= 0 &&
+                nc < boardSize &&
+                regionBoard[nr][nc] !== -1
+              ) {
+                adjacentRegions.add(regionBoard[nr][nc]);
+              }
+            }
+
+            if (adjacentRegions.size > 0) {
+              candidates.push({
+                r,
+                c,
+                regions: Array.from(adjacentRegions),
+              });
+            }
+          }
+        }
+      }
+
+      if (candidates.length > 0) {
+        // Shuffle candidates for randomness
+        shuffleArray(candidates);
+
+        // Pick a candidate and grow a region
+        const candidate = candidates[0];
+        const chosenRegion =
+          candidate.regions[
+            Math.floor(Math.random() * candidate.regions.length)
+          ];
+
+        regionBoard[candidate.r][candidate.c] = chosenRegion;
+        changed = true;
+      }
+
+      return changed;
+    };
+
+    // Fill all remaining cells by growing regions
+    while (regionBoard.some((row) => row.some((cell) => cell === -1))) {
+      if (!growRegions()) {
+        // If we can't grow any more normally, assign remaining cells to adjacent regions
+        for (let r = 0; r < boardSize; r++) {
+          for (let c = 0; c < boardSize; c++) {
+            if (regionBoard[r][c] === -1) {
+              // Find adjacent non-empty cells
+              const directions = [
+                [0, 1],
+                [1, 0],
+                [0, -1],
+                [-1, 0],
+              ];
+              const adjacent = [];
+
+              for (const [dr, dc] of directions) {
+                const nr = r + dr;
+                const nc = c + dc;
+                if (
+                  nr >= 0 &&
+                  nr < boardSize &&
+                  nc >= 0 &&
+                  nc < boardSize &&
+                  regionBoard[nr][nc] !== -1
+                ) {
+                  adjacent.push(regionBoard[nr][nc]);
+                }
+              }
+
+              if (adjacent.length > 0) {
+                regionBoard[r][c] =
+                  adjacent[Math.floor(Math.random() * adjacent.length)];
+              } else {
+                // If no adjacent regions, assign to region 0
+                regionBoard[r][c] = 0;
+              }
+            }
+          }
+        }
+      }
+    }
+
+    // Count number of regions created
+    const uniqueRegions = new Set();
+    for (let r = 0; r < boardSize; r++) {
+      for (let c = 0; c < boardSize; c++) {
+        uniqueRegions.add(regionBoard[r][c]);
+      }
+    }
+
+    // If we have too many regions, merge some small ones
+    if (uniqueRegions.size > boardSize) {
+      // Calculate region sizes
+      const regionSizes = {};
+      for (let r = 0; r < boardSize; r++) {
+        for (let c = 0; c < boardSize; c++) {
+          const id = regionBoard[r][c];
+          regionSizes[id] = (regionSizes[id] || 0) + 1;
+        }
+      }
+
+      // Sort regions by size (smallest first)
+      const sortedRegions = Object.entries(regionSizes)
+        .sort((a, b) => a[1] - b[1])
+        .map((pair) => parseInt(pair[0]));
+
+      // Keep the boardSize largest regions
+      const regionsToKeep = sortedRegions.slice(-boardSize);
+
+      // Merge smaller regions into adjacent larger ones
+      for (let r = 0; r < boardSize; r++) {
+        for (let c = 0; c < boardSize; c++) {
+          const id = regionBoard[r][c];
+          if (!regionsToKeep.includes(id)) {
+            // Find adjacent regions to merge with
+            const directions = [
+              [0, 1],
+              [1, 0],
+              [0, -1],
+              [-1, 0],
+            ];
+            const adjacent = [];
+
+            for (const [dr, dc] of directions) {
+              const nr = r + dr;
+              const nc = c + dc;
+              if (nr >= 0 && nr < boardSize && nc >= 0 && nc < boardSize) {
+                const adjacentId = regionBoard[nr][nc];
+                if (regionsToKeep.includes(adjacentId) && adjacentId !== id) {
+                  adjacent.push(adjacentId);
+                }
+              }
+            }
+
+            if (adjacent.length > 0) {
+              regionBoard[r][c] =
+                adjacent[Math.floor(Math.random() * adjacent.length)];
+            } else {
+              // If no adjacent regions to keep, merge with first kept region
+              regionBoard[r][c] = regionsToKeep[0];
+            }
+          }
+        }
+      }
+    }
+    // If we have too few regions, split some large ones
+    else if (uniqueRegions.size < boardSize) {
+      // Calculate region sizes
+      const regionSizes = {};
+      for (let r = 0; r < boardSize; r++) {
+        for (let c = 0; c < boardSize; c++) {
+          const id = regionBoard[r][c];
+          regionSizes[id] = (regionSizes[id] || 0) + 1;
+        }
+      }
+
+      // Sort regions by size (largest first)
+      const sortedRegions = Object.entries(regionSizes)
+        .sort((a, b) => b[1] - a[1])
+        .map((pair) => parseInt(pair[0]));
+
+      // Split largest regions until we have boardSize regions
+      const regionsToAdd = boardSize - uniqueRegions.size;
+      let nextRegionId = Math.max(...uniqueRegions) + 1;
+
+      for (let i = 0; i < regionsToAdd && i < sortedRegions.length; i++) {
+        const regionToSplit = sortedRegions[i];
+
+        // Get all cells of this region
+        const cells = [];
+        for (let r = 0; r < boardSize; r++) {
+          for (let c = 0; c < boardSize; c++) {
+            if (regionBoard[r][c] === regionToSplit) {
+              cells.push([r, c]);
+            }
+          }
+        }
+
+        if (cells.length > 2) {
+          // Use BFS to find a connected set of cells to split off
+          const visited = new Set();
+          const queue = [cells[0]];
+          visited.add(`${cells[0][0]},${cells[0][1]}`);
+
+          const halfSize = Math.floor(cells.length / 2);
+          while (queue.length > 0 && visited.size < halfSize) {
+            const [r, c] = queue.shift();
+
+            // Check neighbors
+            const directions = [
+              [0, 1],
+              [1, 0],
+              [0, -1],
+              [-1, 0],
+            ];
+            for (const [dr, dc] of directions) {
+              const nr = r + dr;
+              const nc = c + dc;
+
+              if (
+                nr >= 0 &&
+                nr < boardSize &&
+                nc >= 0 &&
+                nc < boardSize &&
+                regionBoard[nr][nc] === regionToSplit &&
+                !visited.has(`${nr},${nc}`)
+              ) {
+                visited.add(`${nr},${nc}`);
+                queue.push([nr, nc]);
+              }
+            }
+          }
+
+          // Change half the cells to the new region
+          for (let r = 0; r < boardSize; r++) {
+            for (let c = 0; c < boardSize; c++) {
+              if (
+                regionBoard[r][c] === regionToSplit &&
+                visited.has(`${r},${c}`)
+              ) {
+                regionBoard[r][c] = nextRegionId;
+              }
+            }
+          }
+
+          nextRegionId++;
+        }
+      }
+    }
+
+    // Renumber regions to be consecutive from 0 to boardSize-1
+    const regionMap = {};
+    let nextId = 0;
+
+    for (let r = 0; r < boardSize; r++) {
+      for (let c = 0; c < boardSize; c++) {
+        const oldId = regionBoard[r][c];
+
+        if (regionMap[oldId] === undefined) {
+          regionMap[oldId] = nextId++;
+        }
+
+        regionBoard[r][c] = regionMap[oldId];
       }
     }
 
@@ -320,21 +725,22 @@ function App() {
   };
 
   // Generate a puzzle with a unique solution
+  // Update the generate puzzle function
   const generatePuzzle = (boardSize) => {
-    // Generate regions
+    // Generate creative regions
     let newRegions;
     let uniqueInfo;
 
     // Keep generating regions until we find one with a unique solution
     let attempts = 0;
     do {
-      if (attempts > 10) {
+      if (attempts > 15) {
         throw new Error(
-          "Could not generate a puzzle with a unique solution after 10 attempts"
+          "Could not generate a puzzle with a unique solution after 15 attempts"
         );
       }
 
-      newRegions = generateRegions(boardSize);
+      newRegions = generateCreativeRegions(boardSize);
       uniqueInfo = hasUniqueSolution(newRegions);
       attempts++;
     } while (!uniqueInfo.isUnique);
