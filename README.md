@@ -1,70 +1,110 @@
-# Getting Started with Create React App
+# Queens Game
 
-This project was bootstrapped with [Create React App](https://github.com/facebook/create-react-app).
+Try it now: **[Play Queens Game Online](https://queensclone.vercel.app/)**
 
-## Available Scripts
+A challenging puzzle game where you place queens on a board following specific constraints.
 
-In the project directory, you can run:
+![Queens Game Screenshot](screenshots/game-preview.png)
 
-### `npm start`
+## 🎮 Game Rules
 
-Runs the app in the development mode.\
-Open [http://localhost:3000](http://localhost:3000) to view it in your browser.
+Queens Game is a strategic puzzle game with the following rules:
 
-The page will reload when you make changes.\
-You may also see any lint errors in the console.
+- Place exactly one queen in each row, column, and colored region of the board.
+- No two queens may touch—meaning no two queens can be adjacent horizontally, vertically, or diagonally.
+- The game is won when all constraints are satisfied.
 
-### `npm test`
+## ✨ Features
 
-Launches the test runner in the interactive watch mode.\
-See the section about [running tests](https://facebook.github.io/create-react-app/docs/running-tests) for more information.
+- **Dynamic Puzzle Generation**: Each puzzle is unique with creative region shapes (Tetris-like pieces, L-shapes, diagonal spans, etc.)
+- **Guaranteed Unique Solution**: No guessing required - every puzzle can be solved through logical deduction
+- **Interactive Gameplay**: Click cells to cycle through empty, marked (X), and queen states
+- **Real-time Validation**: Instantly see conflicts highlighted on the board
+- **Assisted Mode**: Automatically mark cells that cannot contain queens (toggle on/off)
+- **Undo Feature**: Made a mistake? Easily undo your moves
+- **Multiple Board Sizes**: Choose from 6x6, 8x8, or 10x10 boards
+- **Hint System**: Get help when you're stuck
+- **Game Timer**: Track how long it takes you to solve each puzzle
+- **Responsive Design**: Play on desktop or mobile devices
 
-### `npm run build`
+## 🛠️ Installation and Setup
 
-Builds the app for production to the `build` folder.\
-It correctly bundles React in production mode and optimizes the build for the best performance.
+This project is built with React. To run it locally:
 
-The build is minified and the filenames include the hashes.\
-Your app is ready to be deployed!
+1. Clone the repository:
 
-See the section about [deployment](https://facebook.github.io/create-react-app/docs/deployment) for more information.
+   ```
+   git clone https://github.com/yourusername/queens-game.git
+   cd queens-game
+   ```
 
-### `npm run eject`
+2. Install dependencies:
 
-**Note: this is a one-way operation. Once you `eject`, you can't go back!**
+   ```
+   npm install
+   ```
 
-If you aren't satisfied with the build tool and configuration choices, you can `eject` at any time. This command will remove the single build dependency from your project.
+3. Start the development server:
 
-Instead, it will copy all the configuration files and the transitive dependencies (webpack, Babel, ESLint, etc) right into your project so you have full control over them. All of the commands except `eject` will still work, but they will point to the copied scripts so you can tweak them. At this point you're on your own.
+   ```
+   npm start
+   ```
 
-You don't have to ever use `eject`. The curated feature set is suitable for small and middle deployments, and you shouldn't feel obligated to use this feature. However we understand that this tool wouldn't be useful if you couldn't customize it when you are ready for it.
+4. Open http://localhost:3000 in your browser
 
-## Learn More
+## 🎯 How to Play
 
-You can learn more in the [Create React App documentation](https://facebook.github.io/create-react-app/docs/getting-started).
+1. **Start a new game** by clicking the "New Game" button or changing the board size.
+2. **Place queens** by clicking on cells. Each click cycles through three states:
+   - Empty: No mark
+   - Marked (X): Indicates a cell that can't contain a queen
+   - Queen: A queen is placed on the cell
+3. **Use logical deduction**:
+   - Each row, column, and colored region must have exactly one queen
+   - No queens can touch (including diagonally)
+4. **Watch for conflicts**: Queens in conflict will be highlighted in red
+5. **Win the game** by correctly placing all queens on the board
 
-To learn React, check out the [React documentation](https://reactjs.org/).
+## 🧩 Implementation Details
 
-### Code Splitting
+The game includes:
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/code-splitting](https://facebook.github.io/create-react-app/docs/code-splitting)
+- **Creative Region Generation**: Algorithm creates interesting connected region shapes with Tetris-like forms and patterns
+- **Unique Solution Verification**: Ensures generated puzzles have exactly one solution
+- **Conflict Detection**: Visual feedback for rule violations
+- **Auto-marking System**: Optional assistance that marks cells that cannot contain queens
+- **Game State Management**: Tracks board state, conflicts, and game progress
 
-### Analyzing the Bundle Size
+## 🔍 Puzzle Generation
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/analyzing-the-bundle-size](https://facebook.github.io/create-react-app/docs/analyzing-the-bundle-size)
+The region generation algorithm:
 
-### Making a Progressive Web App
+1. Places predefined Tetris-like templates (L-shapes, T-shapes, Z-shapes, etc.)
+2. Ensures all regions are connected
+3. Creates patterns with varied shapes and sizes
+4. Balances region sizes for fair difficulty
+5. Verifies each puzzle has exactly one solution
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/making-a-progressive-web-app](https://facebook.github.io/create-react-app/docs/making-a-progressive-web-app)
+## 🖥️ Technologies Used
 
-### Advanced Configuration
+- **React**: For the user interface and game state management
+- **JavaScript**: Core game logic and algorithms
+- **CSS**: Styling with responsive design for all device sizes
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/advanced-configuration](https://facebook.github.io/create-react-app/docs/advanced-configuration)
+## 📱 Responsive Design
 
-### Deployment
+The game is designed to work well on:
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/deployment](https://facebook.github.io/create-react-app/docs/deployment)
+- Large desktop screens
+- Laptops
+- Tablets
+- Mobile phones
 
-### `npm run build` fails to minify
+## 📷 Screenshots
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/troubleshooting#npm-run-build-fails-to-minify](https://facebook.github.io/create-react-app/docs/troubleshooting#npm-run-build-fails-to-minify)
+![Game Start](screenshots/game-start.png)
+![Game Won](screenshots/game-won.png)
+
+## 🙏 Acknowledgments
+
+- Inspired by the Queens Game on LinkedIn
