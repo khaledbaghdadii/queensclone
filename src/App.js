@@ -1125,9 +1125,6 @@ function App() {
 
       // Reset game won state
       setGameIsWon(false);
-
-      // Restart timer
-      startTimer();
     }
   };
 
@@ -1291,7 +1288,7 @@ function App() {
           New Game
         </button>
         <button onClick={reset} disabled={loading}>
-          Reset
+          Clear
         </button>
         <button onClick={undo} disabled={loading || history.length <= 1}>
           Undo
