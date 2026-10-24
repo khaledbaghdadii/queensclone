@@ -7,6 +7,10 @@
   /* Font sizes */
   --font-size-queen: min(36px, calc(var(--cell-size-medium) * 0.8));
   --font-size-mark: min(28px, calc(var(--cell-size-medium) * 0.6));
+  /* Per-size variants spelled out: the CSS minifier can't scale a min() */
+  --font-size-queen-small: min(39.6px, calc(var(--cell-size-medium) * 0.88));
+  --font-size-queen-large: min(28.8px, calc(var(--cell-size-medium) * 0.64));
+  --font-size-mark-large: min(22.4px, calc(var(--cell-size-medium) * 0.48));
 
   /* Colors */
   --primary-color: #3498db;
@@ -92,7 +96,7 @@ h1 {
 }
 
 .board-size-6 .cell {
-  font-size: calc(var(--font-size-queen) * 1.1);
+  font-size: var(--font-size-queen-small);
 }
 
 .board-size-8 .cell {
@@ -100,7 +104,7 @@ h1 {
 }
 
 .board-size-10 .cell {
-  font-size: calc(var(--font-size-queen) * 0.8);
+  font-size: var(--font-size-queen-large);
 }
 
 .cell.error {
@@ -124,7 +128,7 @@ h1 {
 }
 
 .board-size-10 .mark {
-  font-size: calc(var(--font-size-mark) * 0.8);
+  font-size: var(--font-size-mark-large);
 }
 
 /* Hints: spotlight the cells the hint is about, preview what it suggests */

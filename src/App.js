@@ -50,6 +50,8 @@ function App() {
     return () => {
       if (timerInterval) clearInterval(timerInterval);
     };
+    // Only a board size change should start a new game
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [size]);
 
   const initializeGame = async (boardSize) => {
