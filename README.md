@@ -16,8 +16,8 @@ Queens Game is a strategic puzzle game with the following rules:
 
 ## ✨ Features
 
-- **Dynamic Puzzle Generation**: Each puzzle is unique with creative region shapes (Tetris-like pieces, L-shapes, diagonal spans, etc.)
-- **Guaranteed Unique Solution**: No guessing required - every puzzle can be solved through logical deduction
+- **Dynamic Puzzle Generation**: Regions are grown around a hidden answer with mixed sizes and styles: tiny pockets, long bars, winding snakes and big sprawling areas
+- **Solvable by Logic, Never by Guessing**: A built-in solver that reasons like a player checks every puzzle, and only keeps ones that need real techniques (region squeezes, N-regions-in-N-rows, cells that would wipe out a region), not just "last cell left"
 - **Interactive Gameplay**: Click cells to cycle through empty, marked (X), and queen states
 - **Real-time Validation**: Instantly see conflicts highlighted on the board
 - **Assisted Mode**: Automatically mark cells that cannot contain queens (toggle on/off)

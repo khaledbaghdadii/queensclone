@@ -1,6 +1,22 @@
 import { Analytics } from "@vercel/analytics/react";
 import React, { useState, useEffect, useRef } from "react";
 import "./App.css";
+import { generatePuzzle as buildPuzzle, getHint } from "./generator";
+
+// Region colors and the names hints use for them
+const REGION_PALETTE = {
+  "#bba3e2": "purple",
+  "#ffc992": "orange",
+  "#96beff": "blue",
+  "#b3dfa0": "green",
+  "#dfdfdf": "grey",
+  "#ff7b60": "red",
+  "#e6f388": "yellow",
+  "#b9b29e": "tan",
+  "#dfa0bf": "pink",
+  "#a3d2d8": "teal",
+  "#62efea": "cyan",
+};
 
 function App() {
   const [size, setSize] = useState(8);
@@ -20,9 +36,12 @@ function App() {
   const [showWinModal, setShowWinModal] = useState(false);
   const [winTime, setWinTime] = useState(0);
   const [gameIsWon, setGameIsWon] = useState(false);
+  const [hint, setHint] = useState(null);
 
   // Add a ref to track the current generation ID
   const generationIdRef = useRef(0);
+  // The drag-to-mark gesture in progress, if any
+  const dragRef = useRef(null);
 
   // Initialize the game
   useEffect(() => {
@@ -108,648 +127,15 @@ function App() {
     }, 100);
   };
 
-  // Generate pastel colors for regions
+  // Soft, clearly distinct region colors (evenly spaced hues blur together on big boards)
   const generateColors = (size) => {
-    const colors = [];
-    const hueStep = 360 / size;
-
-    for (let i = 0; i < size; i++) {
-      const hue = (i * hueStep) % 360;
-      const s = 60 + Math.floor(Math.random() * 20);
-      const l = 75 + Math.floor(Math.random() * 15);
-      colors.push(`hsl(${hue}, ${s}%, ${l}%)`);
-    }
-
-    return colors;
+    const shuffled = Object.keys(REGION_PALETTE).sort(() => Math.random() - 0.5);
+    return shuffled.slice(0, size);
   };
 
-  // Fisher-Yates shuffle algorithm
-  const shuffleArray = (array) => {
-    const newArray = [...array];
-    for (let i = newArray.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1));
-      [newArray[i], newArray[j]] = [newArray[j], newArray[i]];
-    }
-    return newArray;
-  };
-
-  // Generate regions for the board
-  // Replace the current generateRegions function with this one
-  const generateCreativeRegions = (boardSize) => {
-    // Initialize board with all cells unassigned (-1)
-    let regionBoard = Array(boardSize)
-      .fill()
-      .map(() => Array(boardSize).fill(-1));
-
-    // Define shape templates (relative coordinates)
-    const shapeTemplates = [
-      // Long horizontal line
-      {
-        cells: [
-          [0, 0],
-          [0, 1],
-          [0, 2],
-          [0, 3],
-          [0, 4],
-        ].slice(0, Math.min(5, boardSize)),
-        width: Math.min(5, boardSize),
-        height: 1,
-      },
-      // Long vertical line
-      {
-        cells: [
-          [0, 0],
-          [1, 0],
-          [2, 0],
-          [3, 0],
-          [4, 0],
-        ].slice(0, Math.min(5, boardSize)),
-        width: 1,
-        height: Math.min(5, boardSize),
-      },
-      // L-shape
-      {
-        cells: [
-          [0, 0],
-          [1, 0],
-          [2, 0],
-          [2, 1],
-          [2, 2],
-        ],
-        width: 3,
-        height: 3,
-      },
-      // Reverse L-shape
-      {
-        cells: [
-          [0, 2],
-          [1, 2],
-          [2, 0],
-          [2, 1],
-          [2, 2],
-        ],
-        width: 3,
-        height: 3,
-      },
-      // T-shape
-      {
-        cells: [
-          [0, 1],
-          [1, 0],
-          [1, 1],
-          [1, 2],
-          [2, 1],
-        ],
-        width: 3,
-        height: 3,
-      },
-      // Z-shape
-      {
-        cells: [
-          [0, 0],
-          [0, 1],
-          [1, 1],
-          [1, 2],
-        ],
-        width: 3,
-        height: 2,
-      },
-      // Square shape
-      {
-        cells: [
-          [0, 0],
-          [0, 1],
-          [1, 0],
-          [1, 1],
-        ],
-        width: 2,
-        height: 2,
-      },
-      // Diagonal-ish shape
-      {
-        cells: [
-          [0, 0],
-          [1, 0],
-          [1, 1],
-          [2, 1],
-          [2, 2],
-        ],
-        width: 3,
-        height: 3,
-      },
-      // U-shape
-      {
-        cells: [
-          [0, 0],
-          [0, 1],
-          [0, 2],
-          [1, 0],
-          [1, 2],
-        ],
-        width: 3,
-        height: 2,
-      },
-    ];
-
-    // Helper function to check if a shape fits at a position
-    const canPlaceShape = (template, r, c) => {
-      for (const [dr, dc] of template.cells) {
-        const nr = r + dr;
-        const nc = c + dc;
-        if (nr >= boardSize || nc >= boardSize || regionBoard[nr][nc] !== -1) {
-          return false;
-        }
-      }
-      return true;
-    };
-
-    // Try to place interesting shapes for as many regions as possible
-    let regionId = 0;
-    const maxShapedRegions = Math.min(boardSize, boardSize <= 6 ? 5 : 8);
-
-    while (regionId < maxShapedRegions) {
-      // Select a random template that fits the remaining space
-      let template = null;
-      let position = null;
-
-      // Shuffle templates to get variety
-      const templates = shuffleArray([...shapeTemplates]);
-
-      // Try each template
-      for (const t of templates) {
-        // Skip templates that are too large for the board
-        if (t.width > boardSize || t.height > boardSize) continue;
-
-        // Try different positions
-        const positions = [];
-        for (let r = 0; r <= boardSize - t.height; r++) {
-          for (let c = 0; c <= boardSize - t.width; c++) {
-            if (canPlaceShape(t, r, c)) {
-              positions.push([r, c]);
-            }
-          }
-        }
-
-        if (positions.length > 0) {
-          template = t;
-          position = positions[Math.floor(Math.random() * positions.length)];
-          break;
-        }
-      }
-
-      // If no template fits, place a single cell
-      if (!template) {
-        for (let r = 0; r < boardSize; r++) {
-          for (let c = 0; c < boardSize; c++) {
-            if (regionBoard[r][c] === -1) {
-              regionBoard[r][c] = regionId;
-              regionId++;
-              break;
-            }
-          }
-          if (regionId > maxShapedRegions) break;
-        }
-      } else {
-        // Place the template
-        const [r, c] = position;
-        for (const [dr, dc] of template.cells) {
-          regionBoard[r + dr][c + dc] = regionId;
-        }
-        regionId++;
-      }
-    }
-
-    // For any remaining regions, create seeds
-    while (regionId < boardSize) {
-      let placed = false;
-      for (let r = 0; r < boardSize && !placed; r++) {
-        for (let c = 0; c < boardSize && !placed; c++) {
-          if (regionBoard[r][c] === -1) {
-            regionBoard[r][c] = regionId++;
-            placed = true;
-          }
-        }
-      }
-
-      if (!placed) break; // No more space for seeds
-    }
-
-    // Function to grow regions by adding adjacent cells
-    const growRegions = () => {
-      let changed = false;
-
-      // Find all empty cells adjacent to a region
-      const candidates = [];
-      for (let r = 0; r < boardSize; r++) {
-        for (let c = 0; c < boardSize; c++) {
-          if (regionBoard[r][c] === -1) {
-            const directions = [
-              [0, 1],
-              [1, 0],
-              [0, -1],
-              [-1, 0],
-            ];
-            const adjacentRegions = new Set();
-
-            for (const [dr, dc] of directions) {
-              const nr = r + dr;
-              const nc = c + dc;
-              if (
-                nr >= 0 &&
-                nr < boardSize &&
-                nc >= 0 &&
-                nc < boardSize &&
-                regionBoard[nr][nc] !== -1
-              ) {
-                adjacentRegions.add(regionBoard[nr][nc]);
-              }
-            }
-
-            if (adjacentRegions.size > 0) {
-              candidates.push({
-                r,
-                c,
-                regions: Array.from(adjacentRegions),
-              });
-            }
-          }
-        }
-      }
-
-      if (candidates.length > 0) {
-        // Shuffle candidates for randomness
-        shuffleArray(candidates);
-
-        // Pick a candidate and grow a region
-        const candidate = candidates[0];
-        const chosenRegion =
-          candidate.regions[
-            Math.floor(Math.random() * candidate.regions.length)
-          ];
-
-        regionBoard[candidate.r][candidate.c] = chosenRegion;
-        changed = true;
-      }
-
-      return changed;
-    };
-
-    // Fill all remaining cells by growing regions
-    while (regionBoard.some((row) => row.some((cell) => cell === -1))) {
-      if (!growRegions()) {
-        // If we can't grow any more normally, assign remaining cells to adjacent regions
-        for (let r = 0; r < boardSize; r++) {
-          for (let c = 0; c < boardSize; c++) {
-            if (regionBoard[r][c] === -1) {
-              // Find adjacent non-empty cells
-              const directions = [
-                [0, 1],
-                [1, 0],
-                [0, -1],
-                [-1, 0],
-              ];
-              const adjacent = [];
-
-              for (const [dr, dc] of directions) {
-                const nr = r + dr;
-                const nc = c + dc;
-                if (
-                  nr >= 0 &&
-                  nr < boardSize &&
-                  nc >= 0 &&
-                  nc < boardSize &&
-                  regionBoard[nr][nc] !== -1
-                ) {
-                  adjacent.push(regionBoard[nr][nc]);
-                }
-              }
-
-              if (adjacent.length > 0) {
-                regionBoard[r][c] =
-                  adjacent[Math.floor(Math.random() * adjacent.length)];
-              } else {
-                // If no adjacent regions, assign to region 0
-                regionBoard[r][c] = 0;
-              }
-            }
-          }
-        }
-      }
-    }
-
-    // Count number of regions created
-    const uniqueRegions = new Set();
-    for (let r = 0; r < boardSize; r++) {
-      for (let c = 0; c < boardSize; c++) {
-        uniqueRegions.add(regionBoard[r][c]);
-      }
-    }
-
-    // If we have too many regions, merge some small ones
-    if (uniqueRegions.size > boardSize) {
-      // Calculate region sizes
-      const regionSizes = {};
-      for (let r = 0; r < boardSize; r++) {
-        for (let c = 0; c < boardSize; c++) {
-          const id = regionBoard[r][c];
-          regionSizes[id] = (regionSizes[id] || 0) + 1;
-        }
-      }
-
-      // Sort regions by size (smallest first)
-      const sortedRegions = Object.entries(regionSizes)
-        .sort((a, b) => a[1] - b[1])
-        .map((pair) => parseInt(pair[0]));
-
-      // Keep the boardSize largest regions
-      const regionsToKeep = sortedRegions.slice(-boardSize);
-
-      // Merge smaller regions into adjacent larger ones
-      for (let r = 0; r < boardSize; r++) {
-        for (let c = 0; c < boardSize; c++) {
-          const id = regionBoard[r][c];
-          if (!regionsToKeep.includes(id)) {
-            // Find adjacent regions to merge with
-            const directions = [
-              [0, 1],
-              [1, 0],
-              [0, -1],
-              [-1, 0],
-            ];
-            const adjacent = [];
-
-            for (const [dr, dc] of directions) {
-              const nr = r + dr;
-              const nc = c + dc;
-              if (nr >= 0 && nr < boardSize && nc >= 0 && nc < boardSize) {
-                const adjacentId = regionBoard[nr][nc];
-                if (regionsToKeep.includes(adjacentId) && adjacentId !== id) {
-                  adjacent.push(adjacentId);
-                }
-              }
-            }
-
-            if (adjacent.length > 0) {
-              regionBoard[r][c] =
-                adjacent[Math.floor(Math.random() * adjacent.length)];
-            } else {
-              // If no adjacent regions to keep, merge with first kept region
-              regionBoard[r][c] = regionsToKeep[0];
-            }
-          }
-        }
-      }
-    }
-    // If we have too few regions, split some large ones
-    else if (uniqueRegions.size < boardSize) {
-      // Calculate region sizes
-      const regionSizes = {};
-      for (let r = 0; r < boardSize; r++) {
-        for (let c = 0; c < boardSize; c++) {
-          const id = regionBoard[r][c];
-          regionSizes[id] = (regionSizes[id] || 0) + 1;
-        }
-      }
-
-      // Sort regions by size (largest first)
-      const sortedRegions = Object.entries(regionSizes)
-        .sort((a, b) => b[1] - a[1])
-        .map((pair) => parseInt(pair[0]));
-
-      // Split largest regions until we have boardSize regions
-      const regionsToAdd = boardSize - uniqueRegions.size;
-      let nextRegionId = Math.max(...uniqueRegions) + 1;
-
-      for (let i = 0; i < regionsToAdd && i < sortedRegions.length; i++) {
-        const regionToSplit = sortedRegions[i];
-
-        // Get all cells of this region
-        const cells = [];
-        for (let r = 0; r < boardSize; r++) {
-          for (let c = 0; c < boardSize; c++) {
-            if (regionBoard[r][c] === regionToSplit) {
-              cells.push([r, c]);
-            }
-          }
-        }
-
-        if (cells.length > 2) {
-          // Use BFS to find a connected set of cells to split off
-          const visited = new Set();
-          const queue = [cells[0]];
-          visited.add(`${cells[0][0]},${cells[0][1]}`);
-
-          const halfSize = Math.floor(cells.length / 2);
-          while (queue.length > 0 && visited.size < halfSize) {
-            const [r, c] = queue.shift();
-
-            // Check neighbors
-            const directions = [
-              [0, 1],
-              [1, 0],
-              [0, -1],
-              [-1, 0],
-            ];
-            for (const [dr, dc] of directions) {
-              const nr = r + dr;
-              const nc = c + dc;
-
-              if (
-                nr >= 0 &&
-                nr < boardSize &&
-                nc >= 0 &&
-                nc < boardSize &&
-                regionBoard[nr][nc] === regionToSplit &&
-                !visited.has(`${nr},${nc}`)
-              ) {
-                visited.add(`${nr},${nc}`);
-                queue.push([nr, nc]);
-              }
-            }
-          }
-
-          // Change half the cells to the new region
-          for (let r = 0; r < boardSize; r++) {
-            for (let c = 0; c < boardSize; c++) {
-              if (
-                regionBoard[r][c] === regionToSplit &&
-                visited.has(`${r},${c}`)
-              ) {
-                regionBoard[r][c] = nextRegionId;
-              }
-            }
-          }
-
-          nextRegionId++;
-        }
-      }
-    }
-
-    // Renumber regions to be consecutive from 0 to boardSize-1
-    const regionMap = {};
-    let nextId = 0;
-
-    for (let r = 0; r < boardSize; r++) {
-      for (let c = 0; c < boardSize; c++) {
-        const oldId = regionBoard[r][c];
-
-        if (regionMap[oldId] === undefined) {
-          regionMap[oldId] = nextId++;
-        }
-
-        regionBoard[r][c] = regionMap[oldId];
-      }
-    }
-
-    return regionBoard;
-  };
-
-  // Check if queen placement is valid
-  const isValidPlacement = (testBoard, row, col, testRegions) => {
-    const boardSize = testBoard.length;
-
-    // Check row
-    for (let j = 0; j < boardSize; j++) {
-      if (testBoard[row][j] === 2) return false;
-    }
-
-    // Check column
-    for (let i = 0; i < boardSize; i++) {
-      if (testBoard[i][col] === 2) return false;
-    }
-
-    // Check adjacency (including diagonal adjacency)
-    for (
-      let i = Math.max(0, row - 1);
-      i <= Math.min(boardSize - 1, row + 1);
-      i++
-    ) {
-      for (
-        let j = Math.max(0, col - 1);
-        j <= Math.min(boardSize - 1, col + 1);
-        j++
-      ) {
-        // Skip the cell itself
-        if (i === row && j === col) continue;
-
-        if (testBoard[i][j] === 2) {
-          return false;
-        }
-      }
-    }
-
-    // Check region constraint
-    const currentRegion = testRegions[row][col];
-    for (let i = 0; i < boardSize; i++) {
-      for (let j = 0; j < boardSize; j++) {
-        if (testBoard[i][j] === 2 && testRegions[i][j] === currentRegion) {
-          return false;
-        }
-      }
-    }
-
-    return true;
-  };
-
-  // Generate a complete solution
-  const generateSolution = (testRegions) => {
-    const boardSize = testRegions.length;
-    const solutionBoard = Array(boardSize)
-      .fill()
-      .map(() => Array(boardSize).fill(0));
-
-    // Solve using backtracking
-    const solve = (row) => {
-      if (row >= boardSize) return true;
-
-      // Try each column in the current row
-      const cols = shuffleArray([...Array(boardSize).keys()]);
-
-      for (const col of cols) {
-        if (isValidPlacement(solutionBoard, row, col, testRegions)) {
-          solutionBoard[row][col] = 2; // Place queen
-
-          if (solve(row + 1)) return true;
-
-          solutionBoard[row][col] = 0; // Backtrack
-        }
-      }
-
-      return false;
-    };
-
-    // Start solving from the first row
-    if (solve(0)) {
-      return solutionBoard;
-    }
-
-    return null; // No solution exists
-  };
-
-  // Check if the puzzle has a unique solution
-  const hasUniqueSolution = (testRegions) => {
-    const boardSize = testRegions.length;
-    let solutionCount = 0;
-    let firstSolution = null;
-
-    const tempBoard = Array(boardSize)
-      .fill()
-      .map(() => Array(boardSize).fill(0));
-
-    const countSolutions = (row) => {
-      if (solutionCount > 1) return; // Early exit if multiple solutions found
-
-      if (row >= boardSize) {
-        solutionCount++;
-        if (solutionCount === 1) {
-          // Save the first solution
-          firstSolution = JSON.parse(JSON.stringify(tempBoard));
-        }
-        return;
-      }
-
-      for (let col = 0; col < boardSize; col++) {
-        if (isValidPlacement(tempBoard, row, col, testRegions)) {
-          tempBoard[row][col] = 2; // Place queen
-          countSolutions(row + 1);
-          tempBoard[row][col] = 0; // Remove queen
-        }
-      }
-    };
-
-    countSolutions(0);
-
-    return {
-      isUnique: solutionCount === 1,
-      solution: firstSolution,
-    };
-  };
-
-  // Generate a puzzle with a unique solution
-  // Update the generate puzzle function
   const generatePuzzle = (boardSize) => {
-    // Generate creative regions
-    let newRegions;
-    let uniqueInfo;
-
-    // Keep generating regions until we find one with a unique solution
-    let attempts = 0;
-    do {
-      if (attempts > 15) {
-        throw new Error(
-          "Could not generate a puzzle with a unique solution after 15 attempts"
-        );
-      }
-
-      newRegions = generateCreativeRegions(boardSize);
-      uniqueInfo = hasUniqueSolution(newRegions);
-      attempts++;
-    } while (!uniqueInfo.isUnique);
-
-    return {
-      newRegions,
-      newSolution: uniqueInfo.solution,
-    };
+    const { regions, solution } = buildPuzzle(boardSize);
+    return { newRegions: regions, newSolution: solution };
   };
 
   // Start the timer
@@ -937,6 +323,73 @@ function App() {
     validateBoard(newBoard);
   };
 
+  // Press and drag across cells to mark them with X. A drag that starts on an X
+  // erases X's instead. Queens are never touched. A press without moving is a click.
+  const cellAtPoint = (x, y) => {
+    const el = document.elementFromPoint(x, y)?.closest("[data-cell]");
+    if (!el) return null;
+    const [row, col] = el.dataset.cell.split("-").map(Number);
+    return { row, col };
+  };
+
+  const paintCell = (row, col) => {
+    const drag = dragRef.current;
+    const key = `${row}-${col}`;
+    if (drag.visited.has(key)) return;
+    drag.visited.add(key);
+
+    const from = drag.paint === 1 ? 0 : 1;
+    setBoard((prev) => {
+      if (prev[row][col] !== from) return prev;
+      const next = prev.map((r) => [...r]);
+      next[row][col] = drag.paint;
+      return next;
+    });
+  };
+
+  const handlePointerDown = (e, row, col) => {
+    if (loading || gameIsWon || e.button !== 0) return;
+    dragRef.current = {
+      row,
+      col,
+      paint: board[row][col] === 1 ? 0 : 1,
+      moved: false,
+      visited: new Set(),
+    };
+  };
+
+  const handlePointerMove = (e) => {
+    const drag = dragRef.current;
+    if (!drag) return;
+    const cell = cellAtPoint(e.clientX, e.clientY);
+    if (!cell) return;
+    if (!drag.moved) {
+      if (cell.row === drag.row && cell.col === drag.col) return;
+      drag.moved = true;
+      saveState(); // the whole drag is one undo step
+      paintCell(drag.row, drag.col);
+      drag.last = { row: drag.row, col: drag.col };
+    }
+
+    // Fast swipes can skip cells between move events, so fill in the path.
+    const dr = cell.row - drag.last.row;
+    const dc = cell.col - drag.last.col;
+    const steps = Math.max(Math.abs(dr), Math.abs(dc));
+    for (let s = 1; s <= steps; s++) {
+      paintCell(
+        drag.last.row + Math.round((dr * s) / steps),
+        drag.last.col + Math.round((dc * s) / steps)
+      );
+    }
+    drag.last = cell;
+  };
+
+  const handlePointerUp = () => {
+    const drag = dragRef.current;
+    dragRef.current = null;
+    if (drag && !drag.moved) cellClick(drag.row, drag.col);
+  };
+
   // Save current state to history
   const saveState = () => {
     const currentState = {
@@ -950,9 +403,9 @@ function App() {
   const undo = () => {
     if (history.length <= 1 || gameIsWon) return; // Nothing to undo or game is won
 
+    // Entries after the first are snapshots taken just before each move
     const newHistory = [...history];
-    newHistory.pop(); // Remove current state
-    const previousState = newHistory[newHistory.length - 1];
+    const previousState = newHistory.pop();
 
     setBoard(previousState.board);
     setAutoMarkedCells(previousState.autoMarkedCells);
@@ -1128,75 +581,52 @@ function App() {
     }
   };
 
-  // Give a hint (place a queen correctly from the solution)
+  // Any change to the board makes the current hint stale
+  useEffect(() => setHint(null), [board]);
+
+  // Like LinkedIn: point out mistakes, or explain the next logical step
   const giveHint = () => {
     if (loading || !solution || gameIsWon) return;
+    const next = getHint(
+      regions,
+      board,
+      solution,
+      (g) => `the ${REGION_PALETTE[colors[g]] || `region ${g + 1}`} region`
+    );
+    setHint(next && { ...next, focus: new Set(next.focus) });
+  };
 
-    // Save current state for undo
+  // Carry out what the hint suggests
+  const applyHint = () => {
+    if (!hint) return;
     saveState();
 
-    const newBoard = JSON.parse(JSON.stringify(board));
-    const boardSize = newBoard.length;
+    let newBoard = board.map((row) => [...row]);
     let newAutoMarkedCells = { ...autoMarkedCells };
+    const cellsOf = (keys) => keys.map((key) => key.split("-").map(Number));
 
-    // Find rows without queens
-    const rowsWithoutQueens = [];
-    for (let r = 0; r < boardSize; r++) {
-      let hasQueen = false;
-      for (let c = 0; c < boardSize; c++) {
-        if (newBoard[r][c] === 2) {
-          hasQueen = true;
-          break;
-        }
+    for (const [r, c] of cellsOf(hint.remove)) {
+      if (newBoard[r][c] === 2) {
+        const result = removeAutoMarkedCells(r, c, newBoard, newAutoMarkedCells);
+        newBoard = result.board;
+        newAutoMarkedCells = result.autoMarkedCells;
       }
-      if (!hasQueen) {
-        rowsWithoutQueens.push(r);
-      }
+      newBoard[r][c] = 0;
+    }
+    for (const [r, c] of cellsOf(hint.eliminate)) {
+      if (newBoard[r][c] === 0) newBoard[r][c] = 1;
+    }
+    if (hint.place) {
+      const [r, c] = hint.place.split("-").map(Number);
+      newBoard[r][c] = 2;
+      const result = autoMarkCells(r, c, newBoard, newAutoMarkedCells);
+      newBoard = result.board;
+      newAutoMarkedCells = result.autoMarkedCells;
     }
 
-    // If no empty rows, provide a message
-    if (rowsWithoutQueens.length === 0) {
-      setMessage("All rows have queens. Check for conflicts.");
-      return;
-    }
-
-    // Randomly select a row without a queen
-    const randomRow =
-      rowsWithoutQueens[Math.floor(Math.random() * rowsWithoutQueens.length)];
-
-    // Place a queen from the solution
-    for (let c = 0; c < boardSize; c++) {
-      if (solution[randomRow][c] === 2) {
-        newBoard[randomRow][c] = 2;
-
-        // Auto-mark cells for this queen
-        if (autoMarkEnabled) {
-          const result = autoMarkCells(
-            randomRow,
-            c,
-            newBoard,
-            newAutoMarkedCells
-          );
-          newAutoMarkedCells = result.autoMarkedCells;
-
-          // Copy the auto-marked cells
-          for (const queenKey in result.autoMarkedCells) {
-            for (const cellKey of result.autoMarkedCells[queenKey]) {
-              const [r, c] = cellKey.split("-").map(Number);
-              if (newBoard[r][c] === 0) {
-                // Only mark if cell is empty
-                newBoard[r][c] = 1;
-              }
-            }
-          }
-        }
-
-        setBoard(newBoard);
-        setAutoMarkedCells(newAutoMarkedCells);
-        validateBoard(newBoard);
-        return;
-      }
-    }
+    setBoard(newBoard);
+    setAutoMarkedCells(newAutoMarkedCells);
+    validateBoard(newBoard);
   };
 
   // Calculate cell size based on board size and screen width
@@ -1318,6 +748,19 @@ function App() {
         </div>
       ) : (
         <div id="game-container">
+          {hint && (
+            <div className={`hint-banner hint-${hint.kind}`}>
+              <p>{hint.message}</p>
+              <div className="hint-actions">
+                <button onClick={applyHint}>
+                  {hint.kind === "mistake" ? "Fix it" : "Apply"}
+                </button>
+                <button className="hint-dismiss" onClick={() => setHint(null)}>
+                  Got it
+                </button>
+              </div>
+            </div>
+          )}
           <div className="color-legend">
             {colors.map((color, i) => (
               <div className="legend-item" key={i}>
@@ -1337,6 +780,10 @@ function App() {
               gridTemplateColumns: `repeat(${size}, ${getCellSize()})`,
               gridTemplateRows: `repeat(${size}, ${getCellSize()})`,
             }}
+            onPointerMove={handlePointerMove}
+            onPointerUp={handlePointerUp}
+            onPointerCancel={() => (dragRef.current = null)}
+            onContextMenu={(e) => e.preventDefault()}
           >
             {board.map((row, i) =>
               row.map((cell, j) => {
@@ -1346,15 +793,42 @@ function App() {
                   regions[i] && regions[i][j] !== undefined
                     ? colors[regions[i][j]]
                     : "#fff";
+                const differs = (r, c) =>
+                  regions[r] &&
+                  regions[r][c] !== undefined &&
+                  regions[r][c] !== regions[i][j];
+                const regionEdges = [
+                  differs(i - 1, j) ? "edge-top" : "",
+                  differs(i, j + 1) ? "edge-right" : "",
+                  differs(i + 1, j) ? "edge-bottom" : "",
+                  differs(i, j - 1) ? "edge-left" : "",
+                ].join(" ");
+
+                // Hint spotlight: dim everything except the cells it's about
+                const cellKey = `${i}-${j}`;
+                const hintX = hint && hint.eliminate.includes(cellKey);
+                const hintQueen = hint && hint.place === cellKey;
+                const hintWrong = hint && hint.remove.includes(cellKey);
+                const hintClasses = !hint
+                  ? ""
+                  : [
+                      hint.focus.has(cellKey) || hintX || hintQueen
+                        ? "hint-focus"
+                        : "hint-dim",
+                      hintX ? "hint-x" : "",
+                      hintQueen ? "hint-queen" : "",
+                      hintWrong ? "hint-wrong" : "",
+                    ].join(" ");
 
                 return (
                   <div
                     key={`${i}-${j}`}
-                    className={`cell ${isError ? "error" : ""} ${
-                      conflictInfo ? "has-tooltip" : ""
-                    }`}
+                    className={`cell ${regionEdges} ${hintClasses} ${
+                      isError ? "error" : ""
+                    } ${conflictInfo ? "has-tooltip" : ""}`}
                     style={{ backgroundColor: regionColor }}
-                    onClick={() => cellClick(i, j)}
+                    data-cell={`${i}-${j}`}
+                    onPointerDown={(e) => handlePointerDown(e, i, j)}
                     title={
                       conflictInfo ? `Conflict: ${conflictInfo.reason}` : ""
                     }
@@ -1363,6 +837,10 @@ function App() {
                       <span className="mark">X</span>
                     ) : cell === 2 ? (
                       <QueenIcon color="#111" />
+                    ) : hintQueen ? (
+                      <QueenIcon color="rgba(0, 0, 0, 0.35)" />
+                    ) : hintX ? (
+                      <span className="mark hint-mark">X</span>
                     ) : null}
                   </div>
                 );
